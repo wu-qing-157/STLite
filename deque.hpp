@@ -3,6 +3,7 @@
 
 #include "exceptions.hpp"
 
+#include <cmath>
 #include <cstddef>
 
 namespace sjtu {
@@ -10,10 +11,15 @@ namespace sjtu {
 template <typename T>
 class deque {
   private:
+    static const size_t MIN_SIZE_NEEDED_FOR_SPLIT{10};
+    static constexpr double CONSTANT_FOR_SPLIT = 2.89;
+    static constexpr double CONSTANT_FOR_NEW = 1.98;
+    static constexpr double CONSTANT_FOR_MERGE = 0.31;
+
+  private:
     struct bucket;
 
     struct node {
-        bucket *__bucket;
         node *prev, *next;
         T *value;
 
@@ -78,7 +84,7 @@ class deque {
             auto new_bucket = new bucket;
             for (auto old_node = other->head; old_node != nullptr; old_node = old_node->next) {
                 auto new_node = new node;
-                new_node->value = new T(old_node->value);
+                new_node->value = new T(*(old_node->value));
                 new_bucket->tail->prev->next = new_node;
                 new_node->prev = new_bucket->tail->prev;
                 new_node->next = new_bucket->tail;
@@ -138,7 +144,7 @@ class deque {
      * TODO assignment operator
      */
     deque &operator=(const deque &other) {
-        if (this == &other) return;
+        if (this == &other) return *this;
         clear();
         __size = other.__size;
         for (auto old_bucket = other.head->next; old_bucket != nullptr; old_bucket = old_bucket->next) {
@@ -178,7 +184,7 @@ class deque {
             cur_pos++;
             cur_node = cur_node->next;
         }
-        return *cur_node;
+        return *(cur_node->value);
     }
 
     const T &operator[](const size_t &pos) const {
@@ -193,7 +199,7 @@ class deque {
             cur_pos++;
             cur_node = cur_node->next;
         }
-        return *cur_node;
+        return *(cur_node->value);
     }
 
     /**
@@ -217,26 +223,38 @@ class deque {
     /**
      * returns an iterator to the beginning.
      */
-    iterator begin() {}
+    iterator begin() {
+        return iterator(this, head->next, head->next->head->next);
+    }
 
-    const_iterator cbegin() const {}
+    const_iterator cbegin() const {
+        return const_iterator(this, head->next, head->next->head->next);
+    }
 
     /**
      * returns an iterator to the end.
      */
-    iterator end() {}
+    iterator end() {
+        return iterator(this, tail, tail->head->next);
+    }
 
-    const_iterator cend() const {}
+    const_iterator cend() const {
+        return const_iterator(this, tail, tail->head->next);
+    }
 
     /**
      * checks whether the container is empty.
      */
-    bool empty() const {}
+    bool empty() const {
+        return __size == 0;
+    }
 
     /**
      * returns the number of elements
      */
-    size_t size() const {}
+    size_t size() const {
+        return __size;
+    }
 
     /**
      * clears the contents
@@ -261,7 +279,24 @@ class deque {
      * returns an iterator pointing to the inserted value
      *     throw if the iterator is invalid or it point to a wrong place.
      */
-    iterator insert(iterator pos, const T &value) {}
+    iterator insert(iterator pos, const T &value) {
+        __size++;
+        bucket *tar_bucket = pos.__bucket;
+        tar_bucket->size++;
+        node *pos_node = pos.__node;
+        auto new_node = new node;
+        new_node->value = new T(value);
+        new_node->prev = pos_node->prev;
+        pos_node->prev->next = new_node;
+        new_node->next = pos_node;
+        pos_node->prev = new_node;
+        if (tar_bucket->size > MIN_SIZE_NEEDED_FOR_SPLIT && tar_bucket->size > CONSTANT_FOR_SPLIT * std::sqrt(__size))
+            tar_bucket->__split_before(tar_bucket->size >> 1);
+        for (auto i = tar_bucket->head; i != tar_bucket->tail; i = i->next)
+            if (i == new_node)
+                return iterator(this, tar_bucket, new_node);
+        return iterator(this, tar_bucket->next, new_node);
+    }
 
     /**
      * removes specified element at pos.
@@ -269,33 +304,157 @@ class deque {
      * returns an iterator pointing to the following element, if pos pointing to the last element, end() will be returned.
      * throw if the container is empty, the iterator is invalid or it points to a wrong place.
      */
-    iterator erase(iterator pos) {}
+    iterator erase(iterator pos) {
+        __size--;
+        bucket *tar_bucket = pos.__bucket;
+        tar_bucket->size--;
+        node *tar_node = pos.__node;
+        if (tar_bucket->size == 0) {
+            iterator next_iterator(this, tar_bucket->next, tar_bucket->next->head->next);
+            tar_bucket->clear();
+            delete tar_bucket->head;
+            delete tar_bucket->tail;
+            tar_bucket->next->prev = tar_bucket->prev;
+            tar_bucket->prev->next = tar_bucket->next;
+            delete tar_bucket;
+            return next_iterator;
+        }
+        bool next_in_next_bucket = tar_node == tar_bucket->tail->prev;
+        node *next_node = next_in_next_bucket ? tar_bucket->next->head->next : tar_node->next;
+        tar_node->next->prev = tar_node->prev;
+        tar_node->prev->next = tar_node->next;
+        delete tar_node;
+        if (tar_bucket->prev != head &&
+            tar_bucket->size + tar_bucket->prev->size < CONSTANT_FOR_MERGE * std::sqrt(__size)) {
+            bucket *result_bucket = tar_bucket->prev;
+            result_bucket->__merge_next();
+            if (next_in_next_bucket)
+                return iterator(this, tar_bucket->next, next_node);
+            else
+                return iterator(this, tar_bucket, next_node);
+        } else if (tar_bucket->next != tail &&
+                   tar_bucket->size + tar_bucket->next->size < CONSTANT_FOR_MERGE * std::sqrt(__size)) {
+            tar_bucket->__merge_next();
+            return iterator(this, tar_bucket, next_node);
+        } else {
+            if (next_in_next_bucket)
+                return iterator(this, tar_bucket->next, next_node);
+            else
+                return iterator(this, tar_bucket, next_node);
+        }
+    }
 
     /**
      * adds an element to the end
      */
-    void push_back(const T &value) {}
+    void push_back(const T &value) {
+        __size++;
+        if (tail->prev->size > MIN_SIZE_NEEDED_FOR_SPLIT && tail->prev->size > CONSTANT_FOR_NEW * std::sqrt(__size)) {
+            auto new_bucket = new bucket;
+            auto new_node = new node;
+            new_node->value = new T(value);
+            new_bucket->head->next = new_bucket->tail->prev = new_node;
+            new_node->prev = new_bucket->head;
+            new_node->next = new_bucket->tail;
+            tail->prev->next = new_bucket;
+            new_bucket->prev = tail->prev;
+            new_bucket->next = tail;
+            tail->prev = new_bucket;
+            new_bucket->size = 1;
+        } else {
+            tail->prev->size++;
+            auto new_node = new node;
+            new_node->value = new T(value);
+            tail->prev->tail->prev->next = new_node;
+            new_node->prev = tail->prev->tail->prev;
+            new_node->next = tail->prev->tail;
+            tail->prev->tail->prev = new_node;
+        }
+    }
 
     /**
      * removes the last element
      *     throw when the container is empty.
      */
-    void pop_back() {}
+    void pop_back() {
+        if (__size == 0) throw container_is_empty();
+        __size--;
+        tail->prev->size--;
+        if (tail->prev->size == 0) {
+            auto tar_bucket = tail->prev;
+            delete tar_bucket->head->next;
+            delete tar_bucket->head;
+            delete tar_bucket->tail;
+            tar_bucket->prev->next = tar_bucket->next;
+            tar_bucket->next->prev = tar_bucket->prev;
+            delete tar_bucket;
+        } else {
+            auto tar_node = tail->prev->tail->prev;
+            tar_node->prev->next = tar_node->next;
+            tar_node->next->prev = tar_node->prev;
+            delete tar_node;
+        }
+    }
 
     /**
      * inserts an element to the beginning.
      */
-    void push_front(const T &value) {}
+    void push_front(const T &value) {
+        __size++;
+        if (head->next->size > MIN_SIZE_NEEDED_FOR_SPLIT && head->next->size > CONSTANT_FOR_NEW * std::sqrt(__size)) {
+            auto new_bucket = new bucket;
+            auto new_node = new node;
+            new_node->value = new T(value);
+            new_bucket->head->next = new_bucket->tail->prev = new_node;
+            new_node->prev = new_bucket->head;
+            new_node->next = new_bucket->tail;
+            head->next->prev = new_bucket;
+            new_bucket->next = head->next;
+            new_bucket->prev = head;
+            head->next = new_bucket;
+            new_bucket->size = 1;
+        } else {
+            head->next->size++;
+            auto new_node = new node;
+            new_node->value = new T(value);
+            head->next->head->next->prev = new_node;
+            new_node->next = head->next->head->next;
+            new_node->prev = head->next->head;
+            head->next->head->next = new_node;
+        }
+    }
 
     /**
      * removes the first element.
      *     throw when the container is empty.
      */
-    void pop_front() {}
+    void pop_front() {
+        if (__size == 0) throw container_is_empty();
+        __size--;
+        head->next->size--;
+        if (head->next->size == 0) {
+            auto tar_bucket = head->next;
+            delete tar_bucket->head->next;
+            delete tar_bucket->head;
+            delete tar_bucket->tail;
+            tar_bucket->prev->next = tar_bucket->next;
+            tar_bucket->next->prev = tar_bucket->prev;
+            delete tar_bucket;
+        } else {
+            auto tar_node = head->next->head->next;
+            tar_node->prev->next = tar_node->next;
+            tar_node->next->prev = tar_node->prev;
+            delete tar_node;
+        }
+    }
 
   public:
     class iterator {
         friend class const_iterator;
+
+        friend iterator deque::insert(iterator, const T &);
+
+        friend iterator deque::erase(iterator);
 
       public:
         using value_type = T;
@@ -403,7 +562,7 @@ class deque {
         /**
          * TODO iter++
          */
-        iterator operator++(int) {
+        const iterator operator++(int) {
             iterator new_iterator(*this);
             new_iterator.__node = new_iterator.__node->next;
             if (new_iterator.__node == new_iterator.__bucket->tail) {
@@ -428,7 +587,7 @@ class deque {
         /**
          * TODO iter--
          */
-        iterator operator--(int) {
+        const iterator operator--(int) {
             iterator new_iterator(*this);
             new_iterator.__node = new_iterator.__node->prev;
             if (new_iterator.__node == new_iterator.__bucket->head) {
@@ -593,7 +752,7 @@ class deque {
         /**
          * TODO iter++
          */
-        const_iterator operator++(int) {
+        const const_iterator operator++(int) {
             const_iterator new_iterator(*this);
             new_iterator.__node = new_iterator.__node->next;
             if (new_iterator.__node == new_iterator.__bucket->tail) {
@@ -618,7 +777,7 @@ class deque {
         /**
          * TODO iter--
          */
-        const_iterator operator--(int) {
+        const const_iterator operator--(int) {
             const_iterator new_iterator(*this);
             new_iterator.__node = new_iterator.__node->prev;
             if (new_iterator.__node == new_iterator.__bucket->head) {
