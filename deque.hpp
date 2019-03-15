@@ -349,7 +349,8 @@ class deque {
      */
     void push_back(const T &value) {
         __size++;
-        if (tail->prev->size > MIN_SIZE_NEEDED_FOR_SPLIT && tail->prev->size > CONSTANT_FOR_NEW * std::sqrt(__size)) {
+        if (__size == 1 || (tail->prev->size > MIN_SIZE_NEEDED_FOR_SPLIT &&
+                            tail->prev->size > CONSTANT_FOR_NEW * std::sqrt(__size))) {
             auto new_bucket = new bucket;
             auto new_node = new node;
             new_node->value = new T(value);
@@ -401,7 +402,8 @@ class deque {
      */
     void push_front(const T &value) {
         __size++;
-        if (head->next->size > MIN_SIZE_NEEDED_FOR_SPLIT && head->next->size > CONSTANT_FOR_NEW * std::sqrt(__size)) {
+        if (__size == 1 || (head->next->size > MIN_SIZE_NEEDED_FOR_SPLIT &&
+                            head->next->size > CONSTANT_FOR_NEW * std::sqrt(__size))) {
             auto new_bucket = new bucket;
             auto new_node = new node;
             new_node->value = new T(value);
