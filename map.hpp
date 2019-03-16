@@ -8,7 +8,7 @@
 
 namespace sjtu {
 
-template<typename _Key, typename _Tp, class _Compare = std::less<_Key>>
+template <typename _Key, typename _Tp, class _Compare = std::less<_Key>>
 class map {
   public:
     typedef pair<const _Key, _Tp> value_type;
@@ -178,21 +178,95 @@ class map {
         return pair<iterator, bool>(iterator(new_node), true);
     }
 
-    void __erase_leaf(__rbt_node *node) {
-        __rbt_node *child = node->left_child == nullptr ? node->right_child : node->left_child;
-
-        child->father = nullptr;
-        delete node;
-
-        if (node->color == __rbt_node::RED) {
-            // do nothing
-        } else if (child->color == __rbt_node::RED) {
-            child->color = __rbt_node::BLACK;
-        } else if (child->father == nullptr) {
-            // do nothing
-        } else if () {
-
+    void __delete_fix(__rbt_node *node, __rbt_node *father, __rbt_node *brother) {
+        if (father == nullptr) {
+            node->color = __rbt_node::BLACK;
+            return;
         }
+        if (brother->color == __rbt_node::RED) {
+            father->color = __rbt_node::RED;
+            brother->color = __rbt_node::BLACK;
+            if (brother->__is_left_child()) {
+                __right_rotate(father);
+                brother = brother->left_child;
+            } else {
+                __left_rotate(father);
+                brother = brother->right_child;
+            }
+        }
+        if (father->color == __rbt_node::BLACK && brother->color == __rbt_node::BLACK &&
+            (brother->left_child == nullptr || brother->left_child->color == __rbt_node::BLACK) &&
+            (brother->right_child == nullptr || brother->right_child->color == __rbt_node::BLACK)) {
+            brother->color = __rbt_node::RED;
+            __delete_fix(father, father->father, father->father == nullptr ? nullptr : father->brother());
+            return;
+        }
+        if (father->color == __rbt_node::RED && brother->color == __rbt_node::BLACK &&
+            (brother->left_child == nullptr || brother->left_child->color == __rbt_node::BLACK) &&
+            (brother->right_child == nullptr || brother->right_child->color == __rbt_node::BLACK)) {
+            father->color = __rbt_node::BLACK;
+            brother->color = __rbt_node::RED;
+            return;
+        }
+        if (brother->__is_left_child() &&
+            (brother->left_child == nullptr || brother->left_child->color == __rbt_node::BLACK)) {
+            brother->right_child->color = __rbt_node::BLACK;
+            brother->color = __rbt_node::RED;
+            __left_rotate(brother);
+            brother = brother->father;
+        }
+        if (!(brother->__is_left_child()) &&
+            (brother->right_child == nullptr || brother->right_child->color == __rbt_node::BLACK)) {
+            brother->left_child->color = __rbt_node::BLACK;
+            brother->color = __rbt_node::RED;
+            __right_rotate(brother);
+            brother = brother->father;
+        }
+        if (father->color == __rbt_node::RED) {
+            father->color = __rbt_node::BLACK;
+            brother->color = __rbt_node::RED;
+        }
+        if (brother->__is_left_child()) {
+            brother->left_child->color = __rbt_node::BLACK;
+            __right_rotate(father);
+        } else {
+            brother->right_child->color = __rbt_node::BLACK;
+            __left_rotate(father);
+        }
+    }
+
+    void __erase_leaf(__rbt_node *node) {
+        __rbt_node *father = node->father;
+        __rbt_node *child = node->left_child == nullptr ? node->right_child : node->left_child;
+        if (father == nullptr && child == nullptr) {
+            root = nullptr;
+            delete node;
+            return;
+        }
+        if (father == nullptr) {
+            child->father = nullptr;
+            root = child;
+            child->color = __rbt_node::BLACK;
+            delete node;
+            return;
+        }
+        // father exists
+        node->__is_left_child() ? father->left_child : father->right_child = child;
+        if (child != nullptr) child->father = father;
+        if (node->color == __rbt_node::RED) {
+            delete node;
+            return;
+        }
+        // node is black, brother exists
+        __rbt_node *brother = node->brother();
+        // assert(brother != nullptr);
+        if (child != nullptr && child->color == __rbt_node::RED) {
+            child->color = __rbt_node::BLACK;
+            delete node;
+            return;
+        }
+        delete node;
+        __delete_fix(child, father, brother);
     }
 
     void __erase(__rbt_node *node) {
