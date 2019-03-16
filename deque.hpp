@@ -8,16 +8,40 @@
 
 namespace sjtu {
 
+/**
+ * @brief   A linear data structures supporting inserting and removing
+ *
+ * This container supports following operation in O(1) time: accessing, inserting before, or removing the first
+ * element; accessing, inserting after, or removing the last element; find previous or following element.
+ * This container also supports following operation in O(sqrt n) time: accessing with indices, inserting or
+ * removing anywhere; find previous or following n element; calculating the distance between two elements.
+ *
+ * This implementation uses "Unrolled linked list as its internal structure.
+ *
+ * @tparam T    The type of elements stored in this container. MUST have copy constructor.
+ */
 template <typename T>
 class deque {
   private:
     size_t __size;
 
   private:
+    /**
+     * @brief   Several parameters for splitting and merging buckets
+     *
+     * If a bucket contains more than @code{SPLIT_PARA()} elements after inserting, it will be split into
+     * two buckets with approximately same size.
+     *
+     * If a bucket contains more than @code{NEW_PARA()} elements before pushing at either side, a new bucket
+     * will be constructed to store the required element.
+     *
+     * If a bucket and its previous(or following) container contain less than @code{MERGE_PARA()} after removing,
+     * they will be merged into a single bucket.
+     */
     static constexpr double MIN_FOR_SPLIT = 9.9;
     static constexpr double CONSTANT_FOR_SPLIT = 2.89;
     static constexpr double CONSTANT_FOR_NEW = 1.98;
-    static constexpr double CONSTANT_FOR_MERGE = 0.31;
+    static constexpr double CONSTANT_FOR_MERGE = 0.48;
 
     static constexpr double max(double a, double b) { return a > b ? a : b; }
     double SPLIT_PARA() {
@@ -31,8 +55,14 @@ class deque {
     }
 
   private:
+    /**
+     * @brief   A unit in the container, which stores at most approximately sqrt(n) elements
+     */
     struct bucket;
 
+    /**
+     * @brief   A unit in the bucket, which stores a single element
+     */
     struct node {
         node *prev, *next;
         T *value;
@@ -54,6 +84,9 @@ class deque {
             tail->prev = head;
         }
 
+        /**
+         * @brief   Split before the specified position in this bucket
+         */
         void __split_before(size_t pos) {
             node *new_last = head;
             for (size_t i = 0; i < pos; i++)
@@ -81,6 +114,9 @@ class deque {
             // i->__bucket = new_bucket;
         }
 
+        /**
+         * @brief   Merge the next bucket
+         */
         void __merge_next() {
             node *__old_tail = tail, *__old_head = next->head;
             __old_tail->prev->next = __old_head->next;
@@ -97,6 +133,9 @@ class deque {
             delete __old_bucket;
         }
 
+        /**
+         * @brief   Copy this bucket
+         */
         static bucket *__copy_bucket(bucket *other) {
             auto new_bucket = new bucket;
             new_bucket->size = other->size;
@@ -111,6 +150,9 @@ class deque {
             return new_bucket;
         }
 
+        /**
+         * @brief   Clear all elements in this bucket
+         */
         void clear() {
             node *cur = head->next;
             while (cur != tail) {
@@ -131,12 +173,17 @@ class deque {
     bucket *head, *tail;
 
   public:
+    /**
+     * @brief   Default constructor, which constructs a @code{deque} with no elements
+     */
     deque() : head(new bucket), tail(new bucket), __size(0) {
         head->next = tail;
         tail->prev = head;
     }
 
-    // TODO
+    /**
+     * @brief   Copy constructor
+     */
     deque(const deque &other) : head(new bucket), tail(new bucket), __size(other.__size) {
         head->next = tail;
         tail->prev = head;
@@ -150,7 +197,9 @@ class deque {
         }
     }
 
-    // TODO
+    /**
+     * @brief   Destructor
+     */
     ~deque() {
         clear();
         delete head->head;
@@ -162,7 +211,7 @@ class deque {
     }
 
     /**
-     * TODO assignment operator
+     * @brief   Assignment operator
      */
     deque &operator=(const deque &other) {
         if (this == &other) return *this;
@@ -180,19 +229,22 @@ class deque {
 
   public:
     /**
-     * access specified element with bounds checking
-     * throw index_out_of_bound if out of bound.
+     * @brief   Access the element at specified index
+     *
+     * @throw   index_out_of_bound  if the index is out of bound
      */
     T &at(const size_t &pos) {
         // if (pos < 0 || pos >= __size) throw index_out_of_bound();
         return operator[](pos);
     }
-
     const T &at(const size_t &pos) const {
         // if (pos < 0 || pos >= __size) throw index_out_of_bound();
         return operator[](pos);
     }
 
+    /**
+     * The same as @code{at}
+     */
     T &operator[](const size_t &pos) {
         if (pos < 0 || pos >= __size) throw index_out_of_bound();
         bucket *cur_bucket = head->next;
@@ -208,7 +260,6 @@ class deque {
         }
         return *(cur_node->value);
     }
-
     const T &operator[](const size_t &pos) const {
         if (pos < 0 || pos >= __size) throw index_out_of_bound();
         bucket *cur_bucket = head->next;
@@ -226,8 +277,9 @@ class deque {
     }
 
     /**
-     * access the first element
-     * throw container_is_empty when the container is empty.
+     * @brief   Access the first element
+     *
+     * @throw   container_is_empty  if the container is empty.
      */
     const T &front() const {
         if (__size == 0) throw container_is_empty();
@@ -235,8 +287,9 @@ class deque {
     }
 
     /**
-     * access the last element
-     * throw container_is_empty when the container is empty.
+     * @brief   Access the last element
+     *
+     * @throw   container_is_empty  if the container is empty.
      */
     const T &back() const {
         if (__size == 0) throw container_is_empty();
@@ -244,43 +297,49 @@ class deque {
     }
 
     /**
-     * returns an iterator to the beginning.
+     * @return  A @code{iterator} pointing to the first element
      */
     iterator begin() {
         return iterator(this, head->next, head->next->head->next);
     }
 
+    /**
+     * @return  A @code{const_iterator} pointing to the first element
+     */
     const_iterator cbegin() const {
         return const_iterator(this, head->next, head->next->head->next);
     }
 
     /**
-     * returns an iterator to the end.
+     * @return  A @code{iterator} pointing to the next of the last element
      */
     iterator end() {
         return iterator(this, tail, tail->head->next);
     }
 
+    /**
+     * @return  A @code{const_iterator} pointing to the next of the last element
+     */
     const_iterator cend() const {
         return const_iterator(this, tail, tail->head->next);
     }
 
     /**
-     * checks whether the container is empty.
+     * @brief   Check whether the container is empty
      */
     bool empty() const {
         return __size == 0;
     }
 
     /**
-     * returns the number of elements
+     * @return  The number of elements
      */
     size_t size() const {
         return __size;
     }
 
     /**
-     * clears the contents
+     * @brief   Clear all elements
      */
     void clear() {
         bucket *cur = head->next;
@@ -298,10 +357,10 @@ class deque {
     }
 
     /**
-     * inserts elements at the specified location in the container.
-     * inserts value before pos
-     * returns an iterator pointing to the inserted value
-     *     throw if the iterator is invalid or it point to a wrong place.
+     * @brief   Insert an elements at the specified location(before @code{pos}) in the container.
+     *
+     * @return  An iterator pointing to the inserted value
+     * @throw   invalid_iterator    if the iterator points to another container
      */
     iterator insert(iterator pos, const T &value) {
         if (pos.__deque != this) throw invalid_iterator();
@@ -328,10 +387,10 @@ class deque {
     }
 
     /**
-     * removes specified element at pos.
-     * removes the element at pos.
-     * returns an iterator pointing to the following element, if pos pointing to the last element, end() will be returned.
-     * throw if the container is empty, the iterator is invalid or it points to a wrong place.
+     * @brief   Remove the specified element
+     *
+     * @return  An iterator pointing to the next of the specified element
+     * @throw   invalid_iterator    if the iterator points to another container or it does not point to any element
      */
     iterator erase(iterator pos) {
         if (pos.__deque != this) throw invalid_iterator();
@@ -374,7 +433,7 @@ class deque {
     }
 
     /**
-     * adds an element to the end
+     * @brief   Add an element to the end
      */
     void push_back(const T &value) {
         __size++;
@@ -402,8 +461,9 @@ class deque {
     }
 
     /**
-     * removes the last element
-     *     throw when the container is empty.
+     * @brief   Remove the last element
+     *
+     * @throw   container_is_empty  if the container is empty
      */
     void pop_back() {
         if (__size == 0) throw container_is_empty();
@@ -426,7 +486,7 @@ class deque {
     }
 
     /**
-     * inserts an element to the beginning.
+     * @brief   Add an element to the beginning
      */
     void push_front(const T &value) {
         __size++;
@@ -454,8 +514,9 @@ class deque {
     }
 
     /**
-     * removes the first element.
-     *     throw when the container is empty.
+     * @brief   Remove the first element
+     *
+     * @throw   container_is_empty  if the container is empty
      */
     void pop_front() {
         if (__size == 0) throw container_is_empty();
@@ -507,9 +568,8 @@ class deque {
                 __deque(other.__deque), __bucket(__bucket), __node(__node) {}
 
         /**
-         * return a new iterator which pointer n-next elements
-         *   even if there are not enough elements, the behaviour is **undefined**.
-         * as well as operator-
+         * @return  A new iterator pointing to the n-next element
+         * @throw   invalid_iterator    if the iterator exceeds @code{end()} after moving
          */
         iterator operator+(const difference_type &n) const {
             if (n < 0) return operator-(-n);
@@ -526,6 +586,7 @@ class deque {
                 cur_diff += new_iterator.__bucket->size;
                 new_iterator.__bucket = new_iterator.__bucket->next;
             }
+            if (new_iterator.__bucket->size == 0 && cur_diff != n) throw invalid_iterator();
             new_iterator.__node = new_iterator.__bucket->head->next;
             while (cur_diff < n) {
                 cur_diff++;
@@ -534,6 +595,10 @@ class deque {
             return new_iterator;
         }
 
+        /**
+         * @return  A new iterator pointing to the n-previous element
+         * @throw   invalid_iterator    if the iterator exceeds @code{begin()} after moving
+         */
         iterator operator-(const difference_type &n) const {
             if (n < 0) return operator+(-n);
             iterator new_iterator(*this);
@@ -549,6 +614,7 @@ class deque {
                 cur_diff += new_iterator.__bucket->size;
                 new_iterator.__bucket = new_iterator.__bucket->prev;
             }
+            if (new_iterator.__bucket->size == 0 && cur_diff != n) throw invalid_iterator();
             new_iterator.__node = new_iterator.__bucket->tail->prev;
             while (cur_diff < n) {
                 cur_diff++;
@@ -558,6 +624,9 @@ class deque {
         }
 
       private:
+        /**
+         * @return  The index of this element in this deque
+         */
         size_t pos() const {
             size_t size = 0;
             for (auto cur_node = __node; cur_node->prev != __bucket->head; cur_node = cur_node->prev)
@@ -568,13 +637,20 @@ class deque {
         }
 
       public:
-        // return th distance between two iterator,
-        // if these two iterators points to different vectors, throw invalid_iterator.
+        /**
+         * @return  The distance between two elements
+         * @throw   invalid_iterator    if they point to different container
+         */
         difference_type operator-(const iterator &rhs) const {
             if (__deque != rhs.__deque) throw invalid_iterator();
             return pos() - rhs.pos();
         }
 
+        /**
+         * @brief   Move to the n-next element
+         *
+         * @throw   invalid_iterator    if the iterator exceeds @code{end()} after moving
+         */
         iterator &operator+=(const difference_type &n) {
             iterator result = operator+(n);
             __bucket = result.__bucket;
@@ -582,6 +658,11 @@ class deque {
             return *this;
         }
 
+        /**
+         * @brief   Move to the n-previous element
+         *
+         * @throw   invalid_iterator    if the iterator exceeds @code{begin()} after moving
+         */
         iterator &operator-=(const int &n) {
             iterator result = operator-(n);
             __bucket = result.__bucket;
@@ -590,9 +671,12 @@ class deque {
         }
 
         /**
-         * TODO iter++
+         * @brief   Move to the next element
+         *
+         * @throw   invalid_iterator    if the iterator exceeds @code{end()} after moving
          */
         const iterator operator++(int) {
+            if (*this == __deque->end()) throw invalid_iterator();
             auto backup = iterator(*this);
             __node = __node->next;
             if (__node == __bucket->tail) {
@@ -603,9 +687,12 @@ class deque {
         }
 
         /**
-         * TODO ++iter
+         * @brief   Move to the next element
+         *
+         * @throw   invalid_iterator    if the iterator exceeds @code{end()} after moving
          */
         iterator &operator++() {
+            if (*this == __deque->end()) throw invalid_iterator();
             __node = __node->next;
             if (__node == __bucket->tail) {
                 __bucket = __bucket->next;
@@ -615,9 +702,12 @@ class deque {
         }
 
         /**
-         * TODO iter--
+         * @brief   Move to the previous element
+         *
+         * @throw   invalid_iterator    if the iterator exceeds @code{begin()} after moving
          */
         const iterator operator--(int) {
+            if (*this == __deque->begin()) throw invalid_iterator();
             auto backup = iterator(*this);
             __node = __node->prev;
             if (__node == __bucket->head) {
@@ -628,9 +718,12 @@ class deque {
         }
 
         /**
-         * TODO --iter
+         * @brief   Move to the previous element
+         *
+         * @throw   invalid_iterator    if the iterator exceeds @code{begin()} after moving
          */
         iterator &operator--() {
+            if (*this == __deque->begin()) throw invalid_iterator();
             __node = __node->prev;
             if (__node == __bucket->head) {
                 __bucket = __bucket->prev;
@@ -639,25 +732,16 @@ class deque {
             return *this;
         }
 
-        /**
-         * TODO *it
-         */
         reference operator*() const {
             if (__node == nullptr || __node->value == nullptr) throw invalid_iterator();
             return *(__node->value);
         }
 
-        /**
-         * TODO it->field
-         */
         pointer operator->() const noexcept {
             if (__node == nullptr || __node->value == nullptr) throw invalid_iterator();
             return __node->value;
         }
 
-        /**
-         * a operator to check whether two iterators are same (pointing to the same memory).
-         */
         bool operator==(const iterator &rhs) const {
             return __node == rhs.__node;
         }
@@ -666,9 +750,6 @@ class deque {
             return __node == rhs.__node;
         }
 
-        /**
-         * some other operator for iterator.
-         */
         bool operator!=(const iterator &rhs) const {
             return __node != rhs.__node;
         }
@@ -701,9 +782,8 @@ class deque {
         const_iterator(const const_iterator &other) = default;
 
         /**
-         * return a new iterator which pointer n-next elements
-         *   even if there are not enough elements, the behaviour is **undefined**.
-         * as well as operator-
+         * @return  A new iterator pointing to the n-next element
+         * @throw   invalid_iterator    if the iterator exceeds @code{end()} after moving
          */
         const_iterator operator+(const difference_type &n) const {
             if (n < 0) return operator-(-n);
@@ -720,6 +800,7 @@ class deque {
                 cur_diff += new_iterator.__bucket->size;
                 new_iterator.__bucket = new_iterator.__bucket->next;
             }
+            if (new_iterator.__bucket->size == 0 && cur_diff != n) throw invalid_iterator();
             new_iterator.__node = new_iterator.__bucket->head->next;
             while (cur_diff < n) {
                 cur_diff++;
@@ -728,6 +809,10 @@ class deque {
             return new_iterator;
         }
 
+        /**
+         * @return  A new iterator pointing to the n-previous element
+         * @throw   invalid_iterator    if the iterator exceeds @code{begin()} after moving
+         */
         const_iterator operator-(const difference_type &n) const {
             if (n < 0) return operator+(-n);
             const_iterator new_iterator(*this);
@@ -743,6 +828,7 @@ class deque {
                 cur_diff += new_iterator.__bucket->size;
                 new_iterator.__bucket = new_iterator.__bucket->prev;
             }
+            if (new_iterator.__bucket->size == 0 && cur_diff != n) throw invalid_iterator();
             new_iterator.__node = new_iterator.__bucket->tail->prev;
             while (cur_diff < n) {
                 cur_diff++;
@@ -752,6 +838,9 @@ class deque {
         }
 
       private:
+        /**
+         * @return  The index of this element in this deque
+         */
         size_t pos() const {
             size_t size = 0;
             for (auto cur_node = __node; cur_node->prev != __bucket->head; cur_node = cur_node->prev)
@@ -762,13 +851,20 @@ class deque {
         }
 
       public:
-        // return th distance between two iterator,
-        // if these two iterators points to different vectors, throw invalid_iterator.
+        /**
+         * @return  The distance between two elements
+         * @throw   invalid_iterator    if they point to different container
+         */
         difference_type operator-(const const_iterator &rhs) const {
             if (__deque != rhs.__deque) throw invalid_iterator();
             return pos() - rhs.pos();
         }
 
+        /**
+         * @brief   Move to the n-next element
+         *
+         * @throw   invalid_iterator    if the iterator exceeds @code{end()} after moving
+         */
         const_iterator &operator+=(const difference_type &n) {
             const_iterator result = operator+(n);
             __bucket = result.__bucket;
@@ -776,6 +872,11 @@ class deque {
             return *this;
         }
 
+        /**
+         * @brief   Move to the n-previous element
+         *
+         * @throw   invalid_iterator    if the iterator exceeds @code{begin()} after moving
+         */
         const_iterator &operator-=(const int &n) {
             const_iterator result = operator-(n);
             __bucket = result.__bucket;
@@ -784,9 +885,12 @@ class deque {
         }
 
         /**
-         * TODO iter++
+         * @brief   Move to the next element
+         *
+         * @throw   invalid_iterator    if the iterator exceeds @code{end()} after moving
          */
         const const_iterator operator++(int) {
+            if (*this == __deque->cend()) throw invalid_iterator();
             auto backup = const_iterator(*this);
             __node = __node->next;
             if (__node == __bucket->tail) {
@@ -797,9 +901,12 @@ class deque {
         }
 
         /**
-         * TODO ++iter
+         * @brief   Move to the next element
+         *
+         * @throw   invalid_iterator    if the iterator exceeds @code{end()} after moving
          */
         const_iterator &operator++() {
+            if (*this == __deque->cend()) throw invalid_iterator();
             __node = __node->next;
             if (__node == __bucket->tail) {
                 __bucket = __bucket->next;
@@ -809,9 +916,12 @@ class deque {
         }
 
         /**
-         * TODO iter--
+         * @brief   Move to the previous element
+         *
+         * @throw   invalid_iterator    if the iterator exceeds @code{begin()} after moving
          */
         const const_iterator operator--(int) {
+            if (*this == __deque->cbegin()) throw invalid_iterator();
             auto backup = const_iterator(*this);
             __node = __node->prev;
             if (__node == __bucket->head) {
@@ -822,9 +932,12 @@ class deque {
         }
 
         /**
-         * TODO --iter
+         * @brief   Move to the previous element
+         *
+         * @throw   invalid_iterator    if the iterator exceeds @code{begin()} after moving
          */
         const_iterator &operator--() {
+            if (*this == __deque->cbegin()) throw invalid_iterator();
             __node = __node->prev;
             if (__node == __bucket->head) {
                 __bucket = __bucket->prev;
@@ -833,25 +946,16 @@ class deque {
             return *this;
         }
 
-        /**
-         * TODO *it
-         */
         reference operator*() const {
             if (__node == nullptr || __node->value == nullptr) throw invalid_iterator();
             return *(__node->value);
         }
 
-        /**
-         * TODO it->field
-         */
         pointer operator->() const noexcept {
             if (__node == nullptr || __node->value == nullptr) throw invalid_iterator();
             return __node->value;
         }
 
-        /**
-         * a operator to check whether two iterators are same (pointing to the same memory).
-         */
         bool operator==(const iterator &rhs) const {
             return __node == rhs.__node;
         }
@@ -860,9 +964,6 @@ class deque {
             return __node == rhs.__node;
         }
 
-        /**
-         * some other operator for iterator.
-         */
         bool operator!=(const iterator &rhs) const {
             return __node != rhs.__node;
         }

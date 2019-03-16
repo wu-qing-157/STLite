@@ -96,16 +96,12 @@ class priority_queue {
 
   public:
     /**
-     * @brief   Default constructor
-     *
-     * Construct an empty priority_queue.
+     * @brief   Default constructor, which constructs a @code{priority_queue} with no elements
      */
     priority_queue() : root(nullptr), _size(0) {}
 
     /**
      * @brief   Copy constructor
-     *
-     * Construct a new priority_queue whose elements are the same as the given one.
      */
     priority_queue(const priority_queue &other) : _size(other._size) {
         root = leftist_node::_copy_subtree(other.root);
@@ -120,8 +116,6 @@ class priority_queue {
 
     /**
      * @brief   Assignment operator
-     *
-     * Copy new elements from the given priority_queue. The origin elements will be lost.
      */
     priority_queue &operator=(const priority_queue &other) {
         if (this == &other) return *this;
