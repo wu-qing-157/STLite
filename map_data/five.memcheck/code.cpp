@@ -16,14 +16,14 @@ bool check1(){ //insert by []
 	int a, b;
 	sjtu::map<int, int> Q;
 	std::map<int, int> stdQ;	
-	for(int i = 1; i <= 5000; i++){
+	for(int i = 1; i <= 10000; i++){
 		a = rand(); b = rand();
 		if(!Q.count(a)){
 			Q[a] = b; stdQ[a] = b;
 		}
 	}
 	sjtu::map<int, int> :: value_type pp;
-	for(int i = 1; i <= 5000; i++){
+	for(int i = 1; i <= 10000; i++){
 		a = rand(); b = rand();
 		if(!Q.count(a)){
 			Q.insert(sjtu::map<int, int> :: value_type(a, b));

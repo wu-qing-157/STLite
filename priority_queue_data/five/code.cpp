@@ -5,7 +5,7 @@
 #include <ctime>
 #include <cstdlib>
 
-#include "../../priority_queue.hpp"
+#include "priority_queue.hpp"
 
 int rand() {
 	static int reed = 1727417277;

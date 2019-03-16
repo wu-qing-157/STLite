@@ -5,13 +5,13 @@ Hint: This test case almost completely tests the correctness of your deque.
 So if all tests are passed, feel free to enhance your performance! :)
 Yours Sincerely. Rabbit.
 ***********************************************************************/
-#include "../class-integer.hpp"
-#include "../class-matrix.hpp"
-#include "../class-bint.hpp"
+#include "class-integer.hpp"
+#include "class-matrix.hpp"
+#include "class-bint.hpp"
 #include <iostream>
 #include <vector>
 #include <deque>
-#include "../../deque.hpp"
+#include "deque.hpp"
 
 long long randNum(long long x,long long maxNum)
 {
