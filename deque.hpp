@@ -11,7 +11,7 @@ namespace sjtu {
 template <typename T>
 class deque {
   private:
-    static const size_t MIN_SIZE_NEEDED_FOR_SPLIT{10};
+    static const size_t MIN_FOR_SPLIT{10};
     static constexpr double CONSTANT_FOR_SPLIT = 2.89;
     static constexpr double CONSTANT_FOR_NEW = 1.98;
     static constexpr double CONSTANT_FOR_MERGE = 0.31;
@@ -22,6 +22,8 @@ class deque {
     struct node {
         node *prev, *next;
         T *value;
+
+        node() : prev(nullptr), next(nullptr), value(nullptr) {}
 
         ~node() {
             delete value;
@@ -82,7 +84,8 @@ class deque {
 
         static bucket *__copy_bucket(bucket *other) {
             auto new_bucket = new bucket;
-            for (auto old_node = other->head; old_node != nullptr; old_node = old_node->next) {
+            new_bucket->size = other->size;
+            for (auto old_node = other->head->next; old_node != other->tail; old_node = old_node->next) {
                 auto new_node = new node;
                 new_node->value = new T(*(old_node->value));
                 new_bucket->tail->prev->next = new_node;
@@ -124,7 +127,7 @@ class deque {
         head->next = tail;
         tail->prev = head;
 
-        for (auto old_bucket = other.head->next; old_bucket != nullptr; old_bucket = old_bucket->next) {
+        for (auto old_bucket = other.head->next; old_bucket != other.tail; old_bucket = old_bucket->next) {
             auto new_bucket = bucket::__copy_bucket(old_bucket);
             tail->prev->next = new_bucket;
             new_bucket->prev = tail->prev;
@@ -136,7 +139,11 @@ class deque {
     // TODO
     ~deque() {
         clear();
+        delete head->head;
+        delete head->tail;
         delete head;
+        delete tail->head;
+        delete tail->tail;
         delete tail;
     }
 
@@ -147,7 +154,7 @@ class deque {
         if (this == &other) return *this;
         clear();
         __size = other.__size;
-        for (auto old_bucket = other.head->next; old_bucket != nullptr; old_bucket = old_bucket->next) {
+        for (auto old_bucket = other.head->next; old_bucket != other.tail; old_bucket = old_bucket->next) {
             auto new_bucket = bucket::__copy_bucket(old_bucket);
             tail->prev->next = new_bucket;
             new_bucket->prev = tail->prev;
@@ -266,6 +273,7 @@ class deque {
             cur->clear();
             delete cur->head;
             delete cur->tail;
+            delete cur;
             cur = next_bucket;
         }
         head->next = tail;
@@ -290,7 +298,7 @@ class deque {
         pos_node->prev->next = new_node;
         new_node->next = pos_node;
         pos_node->prev = new_node;
-        if (tar_bucket->size > MIN_SIZE_NEEDED_FOR_SPLIT && tar_bucket->size > CONSTANT_FOR_SPLIT * std::sqrt(__size))
+        if (tar_bucket->size > MIN_FOR_SPLIT && tar_bucket->size > CONSTANT_FOR_SPLIT * std::sqrt(__size))
             tar_bucket->__split_before(tar_bucket->size >> 1);
         for (auto i = tar_bucket->head; i != tar_bucket->tail; i = i->next)
             if (i == new_node)
@@ -349,7 +357,7 @@ class deque {
      */
     void push_back(const T &value) {
         __size++;
-        if (__size == 1 || (tail->prev->size > MIN_SIZE_NEEDED_FOR_SPLIT &&
+        if (__size == 1 || (tail->prev->size > MIN_FOR_SPLIT &&
                             tail->prev->size > CONSTANT_FOR_NEW * std::sqrt(__size))) {
             auto new_bucket = new bucket;
             auto new_node = new node;
@@ -402,7 +410,7 @@ class deque {
      */
     void push_front(const T &value) {
         __size++;
-        if (__size == 1 || (head->next->size > MIN_SIZE_NEEDED_FOR_SPLIT &&
+        if (__size == 1 || (head->next->size > MIN_FOR_SPLIT &&
                             head->next->size > CONSTANT_FOR_NEW * std::sqrt(__size))) {
             auto new_bucket = new bucket;
             auto new_node = new node;
@@ -499,7 +507,7 @@ class deque {
                 cur_diff += new_iterator.__bucket->size;
                 new_iterator.__bucket = new_iterator.__bucket->next;
             }
-            new_iterator.__node = __bucket->head->next;
+            new_iterator.__node = new_iterator.__bucket->head->next;
             while (cur_diff < n) {
                 cur_diff++;
                 new_iterator.__node = new_iterator.__node->next;
@@ -522,7 +530,7 @@ class deque {
                 cur_diff += new_iterator.__bucket->size;
                 new_iterator.__bucket = new_iterator.__bucket->prev;
             }
-            new_iterator.__node = __bucket->tail->prev;
+            new_iterator.__node = new_iterator.__bucket->tail->prev;
             while (cur_diff < n) {
                 cur_diff++;
                 new_iterator.__node = new_iterator.__node->prev;
@@ -689,7 +697,7 @@ class deque {
                 cur_diff += new_iterator.__bucket->size;
                 new_iterator.__bucket = new_iterator.__bucket->next;
             }
-            new_iterator.__node = __bucket->head->next;
+            new_iterator.__node = new_iterator.__bucket->head->next;
             while (cur_diff < n) {
                 cur_diff++;
                 new_iterator.__node = new_iterator.__node->next;
@@ -712,7 +720,7 @@ class deque {
                 cur_diff += new_iterator.__bucket->size;
                 new_iterator.__bucket = new_iterator.__bucket->prev;
             }
-            new_iterator.__node = __bucket->tail->prev;
+            new_iterator.__node = new_iterator.__bucket->tail->prev;
             while (cur_diff < n) {
                 cur_diff++;
                 new_iterator.__node = new_iterator.__node->prev;
