@@ -20,7 +20,7 @@ namespace sjtu {
  *                  implement operator()(T, T), which returns true iff the first parameter is smaller than the second.
  *                  @code{std::less<T>} is used by default.
  */
-template<typename T, class Compare = std::less<T>>
+template <typename T, class Compare = std::less<T>>
 class priority_queue {
   private:
     /**

@@ -6,10 +6,10 @@
 #include <deque>
 #include <random>
 
-#include "class-integer.hpp"
-#include "class-matrix.hpp"
-#include "class-bint.hpp"
-#include "deque.hpp"
+#include "../class-integer.hpp"
+#include "../class-matrix.hpp"
+#include "../class-bint.hpp"
+#include "../../deque.hpp"
 
 std::default_random_engine randnum(time(NULL));
 
