@@ -11,10 +11,24 @@ namespace sjtu {
 template <typename T>
 class deque {
   private:
-    static const size_t MIN_FOR_SPLIT{10};
+    size_t __size;
+
+  private:
+    static constexpr double MIN_FOR_SPLIT = 9.9;
     static constexpr double CONSTANT_FOR_SPLIT = 2.89;
     static constexpr double CONSTANT_FOR_NEW = 1.98;
     static constexpr double CONSTANT_FOR_MERGE = 0.31;
+
+    static constexpr double max(double a, double b) { return a > b ? a : b; }
+    double SPLIT_PARA() {
+        return max(MIN_FOR_SPLIT, CONSTANT_FOR_SPLIT * std::sqrt(__size));
+    }
+    double NEW_PARA() {
+        return max(MIN_FOR_SPLIT, CONSTANT_FOR_NEW * std::sqrt(__size));
+    }
+    double MERGE_PARA() {
+        return CONSTANT_FOR_MERGE * std::sqrt(__size);
+    }
 
   private:
     struct bucket;
@@ -52,8 +66,8 @@ class deque {
             next->prev = new_bucket;
             next = new_bucket;
 
-            new_bucket->tail = tail;
-            new_bucket->head = new node;
+            new_bucket->tail->prev = tail->prev;
+            tail->prev->next = new_bucket->tail;
             new_bucket->head->next = new_first;
             new_first->prev = new_bucket->head;
 
@@ -73,6 +87,7 @@ class deque {
             __old_head->next->prev = __old_tail->prev;
             delete __old_head;
             delete __old_tail;
+            tail = next->tail;
 
             size += next->size;
 
@@ -114,7 +129,6 @@ class deque {
 
   private:
     bucket *head, *tail;
-    size_t __size;
 
   public:
     deque() : head(new bucket), tail(new bucket), __size(0) {
@@ -170,16 +184,17 @@ class deque {
      * throw index_out_of_bound if out of bound.
      */
     T &at(const size_t &pos) {
-        if (pos < 0 || pos >= __size) throw index_out_of_bound();
+        // if (pos < 0 || pos >= __size) throw index_out_of_bound();
         return operator[](pos);
     }
 
     const T &at(const size_t &pos) const {
-        if (pos < 0 || pos >= __size) throw index_out_of_bound();
+        // if (pos < 0 || pos >= __size) throw index_out_of_bound();
         return operator[](pos);
     }
 
     T &operator[](const size_t &pos) {
+        if (pos < 0 || pos >= __size) throw index_out_of_bound();
         bucket *cur_bucket = head->next;
         size_t cur_pos = 0;
         while (cur_pos + cur_bucket->size <= pos) {
@@ -195,6 +210,7 @@ class deque {
     }
 
     const T &operator[](const size_t &pos) const {
+        if (pos < 0 || pos >= __size) throw index_out_of_bound();
         bucket *cur_bucket = head->next;
         size_t cur_pos = 0;
         while (cur_pos + cur_bucket->size <= pos) {
@@ -215,7 +231,7 @@ class deque {
      */
     const T &front() const {
         if (__size == 0) throw container_is_empty();
-        return *(head->next->head->next);
+        return *(head->next->head->next->value);
     }
 
     /**
@@ -224,7 +240,7 @@ class deque {
      */
     const T &back() const {
         if (__size == 0) throw container_is_empty();
-        return *(tail->prev->tail->prev);
+        return *(tail->prev->tail->prev->value);
     }
 
     /**
@@ -288,6 +304,11 @@ class deque {
      *     throw if the iterator is invalid or it point to a wrong place.
      */
     iterator insert(iterator pos, const T &value) {
+        if (pos.__deque != this) throw invalid_iterator();
+        if (pos == end()) {
+            push_back(value);
+            return --end();
+        }
         __size++;
         bucket *tar_bucket = pos.__bucket;
         tar_bucket->size++;
@@ -298,9 +319,9 @@ class deque {
         pos_node->prev->next = new_node;
         new_node->next = pos_node;
         pos_node->prev = new_node;
-        if (tar_bucket->size > MIN_FOR_SPLIT && tar_bucket->size > CONSTANT_FOR_SPLIT * std::sqrt(__size))
+        if (tar_bucket->size > SPLIT_PARA())
             tar_bucket->__split_before(tar_bucket->size >> 1);
-        for (auto i = tar_bucket->head; i != tar_bucket->tail; i = i->next)
+        for (auto i = tar_bucket->head->next; i != tar_bucket->tail; i = i->next)
             if (i == new_node)
                 return iterator(this, tar_bucket, new_node);
         return iterator(this, tar_bucket->next, new_node);
@@ -313,6 +334,8 @@ class deque {
      * throw if the container is empty, the iterator is invalid or it points to a wrong place.
      */
     iterator erase(iterator pos) {
+        if (pos.__deque != this) throw invalid_iterator();
+        *pos; // test whether pos is invalid
         __size--;
         bucket *tar_bucket = pos.__bucket;
         tar_bucket->size--;
@@ -327,21 +350,19 @@ class deque {
             delete tar_bucket;
             return next_iterator;
         }
-        bool next_in_next_bucket = tar_node == tar_bucket->tail->prev;
+        bool next_in_next_bucket = tar_node->next == tar_bucket->tail;
         node *next_node = next_in_next_bucket ? tar_bucket->next->head->next : tar_node->next;
         tar_node->next->prev = tar_node->prev;
         tar_node->prev->next = tar_node->next;
         delete tar_node;
-        if (tar_bucket->prev != head &&
-            tar_bucket->size + tar_bucket->prev->size < CONSTANT_FOR_MERGE * std::sqrt(__size)) {
+        if (tar_bucket->prev != head && tar_bucket->size + tar_bucket->prev->size < MERGE_PARA()) {
             bucket *result_bucket = tar_bucket->prev;
             result_bucket->__merge_next();
             if (next_in_next_bucket)
-                return iterator(this, tar_bucket->next, next_node);
+                return iterator(this, result_bucket->next, next_node);
             else
-                return iterator(this, tar_bucket, next_node);
-        } else if (tar_bucket->next != tail &&
-                   tar_bucket->size + tar_bucket->next->size < CONSTANT_FOR_MERGE * std::sqrt(__size)) {
+                return iterator(this, result_bucket, next_node);
+        } else if (tar_bucket->next != tail && tar_bucket->size + tar_bucket->next->size < MERGE_PARA()) {
             tar_bucket->__merge_next();
             return iterator(this, tar_bucket, next_node);
         } else {
@@ -357,8 +378,7 @@ class deque {
      */
     void push_back(const T &value) {
         __size++;
-        if (__size == 1 || (tail->prev->size > MIN_FOR_SPLIT &&
-                            tail->prev->size > CONSTANT_FOR_NEW * std::sqrt(__size))) {
+        if (__size == 1 || tail->prev->size > NEW_PARA()) {
             auto new_bucket = new bucket;
             auto new_node = new node;
             new_node->value = new T(value);
@@ -410,8 +430,7 @@ class deque {
      */
     void push_front(const T &value) {
         __size++;
-        if (__size == 1 || (head->next->size > MIN_FOR_SPLIT &&
-                            head->next->size > CONSTANT_FOR_NEW * std::sqrt(__size))) {
+        if (__size == 1 || head->next->size > NEW_PARA()) {
             auto new_bucket = new bucket;
             auto new_node = new node;
             new_node->value = new T(value);
@@ -503,7 +522,7 @@ class deque {
             if (cur_diff == n) return new_iterator;
             cur_diff++;
             new_iterator.__bucket = new_iterator.__bucket->next;
-            while (cur_diff + new_iterator.__bucket->size <= n) {
+            while (cur_diff + new_iterator.__bucket->size <= n && new_iterator.__bucket->size != 0) {
                 cur_diff += new_iterator.__bucket->size;
                 new_iterator.__bucket = new_iterator.__bucket->next;
             }
@@ -526,7 +545,7 @@ class deque {
             if (cur_diff == n) return new_iterator;
             cur_diff++;
             new_iterator.__bucket = new_iterator.__bucket->prev;
-            while (cur_diff + new_iterator.__bucket->size <= n) {
+            while (cur_diff + new_iterator.__bucket->size <= n && new_iterator.__bucket->size != 0) {
                 cur_diff += new_iterator.__bucket->size;
                 new_iterator.__bucket = new_iterator.__bucket->prev;
             }
@@ -552,20 +571,21 @@ class deque {
         // return th distance between two iterator,
         // if these two iterators points to different vectors, throw invalid_iterator.
         difference_type operator-(const iterator &rhs) const {
+            if (__deque != rhs.__deque) throw invalid_iterator();
             return pos() - rhs.pos();
         }
 
         iterator &operator+=(const difference_type &n) {
             iterator result = operator+(n);
             __bucket = result.__bucket;
-            __node = result.__bucket;
+            __node = result.__node;
             return *this;
         }
 
         iterator &operator-=(const int &n) {
             iterator result = operator-(n);
             __bucket = result.__bucket;
-            __node = result.__bucket;
+            __node = result.__node;
             return *this;
         }
 
@@ -573,13 +593,13 @@ class deque {
          * TODO iter++
          */
         const iterator operator++(int) {
-            iterator new_iterator(*this);
-            new_iterator.__node = new_iterator.__node->next;
-            if (new_iterator.__node == new_iterator.__bucket->tail) {
-                new_iterator.__bucket = new_iterator.__bucket->next;
-                new_iterator.__node = new_iterator.__bucket->head->next;
+            auto backup = iterator(*this);
+            __node = __node->next;
+            if (__node == __bucket->tail) {
+                __bucket = __bucket->next;
+                __node = __bucket->head->next;
             }
-            return new_iterator;
+            return backup;
         }
 
         /**
@@ -598,20 +618,20 @@ class deque {
          * TODO iter--
          */
         const iterator operator--(int) {
-            iterator new_iterator(*this);
-            new_iterator.__node = new_iterator.__node->prev;
-            if (new_iterator.__node == new_iterator.__bucket->head) {
-                new_iterator.__bucket = new_iterator.__bucket->prev;
-                new_iterator.__node = new_iterator.__bucket->tail->prev;
+            auto backup = iterator(*this);
+            __node = __node->prev;
+            if (__node == __bucket->head) {
+                __bucket = __bucket->prev;
+                __node = __bucket->tail->prev;
             }
-            return new_iterator;
+            return backup;
         }
 
         /**
          * TODO --iter
          */
         iterator &operator--() {
-            __node = __node->next;
+            __node = __node->prev;
             if (__node == __bucket->head) {
                 __bucket = __bucket->prev;
                 __node = __bucket->tail->prev;
@@ -623,6 +643,7 @@ class deque {
          * TODO *it
          */
         reference operator*() const {
+            if (__node == nullptr || __node->value == nullptr) throw invalid_iterator();
             return *(__node->value);
         }
 
@@ -630,6 +651,7 @@ class deque {
          * TODO it->field
          */
         pointer operator->() const noexcept {
+            if (__node == nullptr || __node->value == nullptr) throw invalid_iterator();
             return __node->value;
         }
 
@@ -667,12 +689,13 @@ class deque {
         using difference_type = std::ptrdiff_t;
 
       private:
-        deque *__deque;
-        bucket *__bucket;
-        node *__node;
+        const deque *__deque;
+        const bucket *__bucket;
+        const node *__node;
 
       public:
-        explicit const_iterator(deque *__deque = nullptr, bucket *__bucket = nullptr, node *__node = nullptr) :
+        explicit const_iterator(const deque *__deque = nullptr, const bucket *__bucket = nullptr,
+                                const node *__node = nullptr) :
                 __deque(__deque), __bucket(__bucket), __node(__node) {}
 
         const_iterator(const const_iterator &other) = default;
@@ -693,7 +716,7 @@ class deque {
             if (cur_diff == n) return new_iterator;
             cur_diff++;
             new_iterator.__bucket = new_iterator.__bucket->next;
-            while (cur_diff + new_iterator.__bucket->size <= n) {
+            while (cur_diff + new_iterator.__bucket->size <= n && new_iterator.__bucket->size != 0) {
                 cur_diff += new_iterator.__bucket->size;
                 new_iterator.__bucket = new_iterator.__bucket->next;
             }
@@ -716,7 +739,7 @@ class deque {
             if (cur_diff == n) return new_iterator;
             cur_diff++;
             new_iterator.__bucket = new_iterator.__bucket->prev;
-            while (cur_diff + new_iterator.__bucket->size <= n) {
+            while (cur_diff + new_iterator.__bucket->size <= n && new_iterator.__bucket->size != 0) {
                 cur_diff += new_iterator.__bucket->size;
                 new_iterator.__bucket = new_iterator.__bucket->prev;
             }
@@ -742,20 +765,21 @@ class deque {
         // return th distance between two iterator,
         // if these two iterators points to different vectors, throw invalid_iterator.
         difference_type operator-(const const_iterator &rhs) const {
+            if (__deque != rhs.__deque) throw invalid_iterator();
             return pos() - rhs.pos();
         }
 
         const_iterator &operator+=(const difference_type &n) {
             const_iterator result = operator+(n);
             __bucket = result.__bucket;
-            __node = result.__bucket;
+            __node = result.__node;
             return *this;
         }
 
         const_iterator &operator-=(const int &n) {
             const_iterator result = operator-(n);
             __bucket = result.__bucket;
-            __node = result.__bucket;
+            __node = result.__node;
             return *this;
         }
 
@@ -763,13 +787,13 @@ class deque {
          * TODO iter++
          */
         const const_iterator operator++(int) {
-            const_iterator new_iterator(*this);
-            new_iterator.__node = new_iterator.__node->next;
-            if (new_iterator.__node == new_iterator.__bucket->tail) {
-                new_iterator.__bucket = new_iterator.__bucket->next;
-                new_iterator.__node = new_iterator.__bucket->head->next;
+            auto backup = const_iterator(*this);
+            __node = __node->next;
+            if (__node == __bucket->tail) {
+                __bucket = __bucket->next;
+                __node = __bucket->head->next;
             }
-            return new_iterator;
+            return backup;
         }
 
         /**
@@ -788,20 +812,20 @@ class deque {
          * TODO iter--
          */
         const const_iterator operator--(int) {
-            const_iterator new_iterator(*this);
-            new_iterator.__node = new_iterator.__node->prev;
-            if (new_iterator.__node == new_iterator.__bucket->head) {
-                new_iterator.__bucket = new_iterator.__bucket->prev;
-                new_iterator.__node = new_iterator.__bucket->tail->prev;
+            auto backup = const_iterator(*this);
+            __node = __node->prev;
+            if (__node == __bucket->head) {
+                __bucket = __bucket->prev;
+                __node = __bucket->tail->prev;
             }
-            return new_iterator;
+            return backup;
         }
 
         /**
          * TODO --iter
          */
         const_iterator &operator--() {
-            __node = __node->next;
+            __node = __node->prev;
             if (__node == __bucket->head) {
                 __bucket = __bucket->prev;
                 __node = __bucket->tail->prev;
@@ -813,6 +837,7 @@ class deque {
          * TODO *it
          */
         reference operator*() const {
+            if (__node == nullptr || __node->value == nullptr) throw invalid_iterator();
             return *(__node->value);
         }
 
@@ -820,6 +845,7 @@ class deque {
          * TODO it->field
          */
         pointer operator->() const noexcept {
+            if (__node == nullptr || __node->value == nullptr) throw invalid_iterator();
             return __node->value;
         }
 

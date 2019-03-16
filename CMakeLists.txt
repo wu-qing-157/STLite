@@ -3,6 +3,8 @@ project(STLite)
 
 set(CMAKE_CXX_STANDARD 14)
 
+add_compile_options(-Wl,--stack=16777216)
+
 add_executable(priority_queue_one priority_queue_data/one/code.cpp)
 add_executable(priority_queue_one_memcheck priority_queue_data/one.memcheck/code.cpp)
 add_executable(priority_queue_two priority_queue_data/two/code.cpp)

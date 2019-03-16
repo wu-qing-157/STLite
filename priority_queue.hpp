@@ -105,7 +105,7 @@ class priority_queue {
     /**
      * @brief   Copy constructor
      *
-     * Constructor a new priority_queue whose elements are the same as the given one.
+     * Construct a new priority_queue whose elements are the same as the given one.
      */
     priority_queue(const priority_queue &other) : _size(other._size) {
         root = leftist_node::_copy_subtree(other.root);

@@ -6,8 +6,8 @@
 #include <cstdlib>
 #include <ctime>
 #include <cmath>
-#include "deque.hpp"
-#include "exceptions.hpp"
+#include "../../deque.hpp"
+#include "../../exceptions.hpp"
 
 
 /***************************/
