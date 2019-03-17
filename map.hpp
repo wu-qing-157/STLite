@@ -30,29 +30,27 @@ class map {
     };
 
     struct __rbt_node : public __list_node {
-        enum __color {
+        enum color_e {
             BLACK, RED
         };
-        enum __which_child {
+        enum which_child_e {
             LEFT_CHILD, RIGHT_CHILD
         };
         __rbt_node *father, *left_child, *right_child;
         value_type *value;
-        __color color;
+        color_e __color;
 
-        explicit __rbt_node(const _Key &key) :
-                value(new value_type(key, _Tp())),
-                father(nullptr), left_child(nullptr), right_child(nullptr), color(RED) {
-            __list_node::__has_rbt_node_info = true;
-        }
+
 
         explicit __rbt_node(const value_type &value) :
                 value(new value_type(value)),
-                father(nullptr), left_child(nullptr), right_child(nullptr), color(RED) {
+                father(nullptr), left_child(nullptr), right_child(nullptr), __color(RED) {
             __list_node::__has_rbt_node_info = true;
         }
 
-        __which_child __is_which_child() {
+        explicit __rbt_node(const _Key &key) : __rbt_node(value_type(key, _Tp())) {}
+
+        which_child_e which_child() {
             if (father->left_child == this)
                 return LEFT_CHILD;
             else
@@ -60,12 +58,17 @@ class map {
         }
 
         __rbt_node *brother() {
-            switch (__is_which_child()) {
+            switch (which_child()) {
                 case LEFT_CHILD:
                     return father->right_child;
                 case RIGHT_CHILD:
                     return father->left_child;
             }
+        }
+
+        static color_e color(__rbt_node *node) {
+            if (node == nullptr) return BLACK;
+            return node->__color;
         }
 
         ~__rbt_node() override {
@@ -126,46 +129,54 @@ class map {
 
     void __insert_fix(__rbt_node *target) {
         if (target->father == nullptr) {
-            target->color = __rbt_node::BLACK;
-        } else if (target->father->color == __rbt_node::BLACK) {
+            target->__color = __rbt_node::BLACK;
+        } else if (__rbt_node::color(target->father) == __rbt_node::BLACK) {
             // do nothing
-        } else if (target->father->brother()->color == __rbt_node::RED) {
-            target->father->color = __rbt_node::BLACK;
-            target->father->brother()->color = __rbt_node::BLACK;
-            target->father->father->color = __rbt_node::RED;
+        } else if (__rbt_node::color(target->father->brother()) == __rbt_node::RED) {
+            target->father->__color = __rbt_node::BLACK;
+            target->father->brother()->__color = __rbt_node::BLACK;
+            target->father->father->__color = __rbt_node::RED;
             __insert_fix(target->father->father);
         } else {
-            if (target->__is_which_child() != target->father->__is_which_child()) {
-                switch (target->__is_which_child()) {
+            if (target->which_child() != target->father->which_child()) {
+                switch (target->which_child()) {
                     case __rbt_node::LEFT_CHILD:
                         __right_rotate(target->father);
                         __left_rotate(target->father);
+                        target->__color = __rbt_node::BLACK;
+                        target->left_child->__color = __rbt_node::RED;
                         break;
                     case __rbt_node::RIGHT_CHILD:
                         __left_rotate(target->father);
                         __right_rotate(target->father);
+                        target->__color = __rbt_node::BLACK;
+                        target->right_child->__color = __rbt_node::RED;
                         break;
                 }
             } else {
-                switch (target->__is_which_child()) {
+                switch (target->which_child()) {
                     case __rbt_node::LEFT_CHILD:
                         __right_rotate(target->father->father);
+                        target->father->__color = __rbt_node::BLACK;
+                        target->brother()->__color = __rbt_node::RED;
                         break;
                     case __rbt_node::RIGHT_CHILD:
                         __left_rotate(target->father->father);
+                        target->father->__color = __rbt_node::BLACK;
+                        target->brother()->__color = __rbt_node::RED;
                         break;
                 }
             }
         }
     }
 
-    pair<iterator, bool> __insert(__rbt_node *new_node) {
+    void __insert(__rbt_node *new_node) {
         if (root == nullptr) {
-            new_node->color = __rbt_node::BLACK;
+            new_node->__color = __rbt_node::BLACK;
             root = new_node;
             __link_three_node(head, new_node, tail);
             __size++;
-            return pair<__rbt_node *, bool>(new_node, true);
+            return;
         }
 
         __rbt_node *y = root, *x = root;
@@ -173,10 +184,8 @@ class map {
             y = x;
             if (__compare_function(new_node->value->first, x->value->first))
                 x = x->left_child;
-            else if (__compare_function(x->value->first, new_node->value->first))
-                x = x->right_child;
             else
-                return pair<__rbt_node *, bool>(x, false);
+                x = x->right_child;
         }
 
         if (__compare_function(new_node->value->first, y->value->first)) {
@@ -189,20 +198,18 @@ class map {
             __link_three_node(y, new_node, y->next);
         }
 
-        __insert_fix(y);
-
-        return pair<iterator, bool>(iterator(new_node), true);
+        __insert_fix(new_node);
     }
 
     void __delete_fix(__rbt_node *node, __rbt_node *father, __rbt_node *brother) {
         if (father == nullptr) {
-            node->color = __rbt_node::BLACK;
+            node->__color = __rbt_node::BLACK;
             return;
         }
-        if (brother->color == __rbt_node::RED) {
-            father->color = __rbt_node::RED;
-            brother->color = __rbt_node::BLACK;
-            switch (brother->__is_which_child()) {
+        if (__rbt_node::color(brother) == __rbt_node::RED) {
+            father->__color = __rbt_node::RED;
+            brother->__color = __rbt_node::BLACK;
+            switch (brother->which_child()) {
                 case __rbt_node::LEFT_CHILD:
                     __right_rotate(father);
                     brother = brother->left_child;
@@ -213,45 +220,45 @@ class map {
                     break;
             }
         }
-        if (father->color == __rbt_node::BLACK && brother->color == __rbt_node::BLACK &&
-            (brother->left_child == nullptr || brother->left_child->color == __rbt_node::BLACK) &&
-            (brother->right_child == nullptr || brother->right_child->color == __rbt_node::BLACK)) {
-            brother->color = __rbt_node::RED;
+        if (__rbt_node::color(father) == __rbt_node::BLACK && __rbt_node::color(brother) == __rbt_node::BLACK &&
+            __rbt_node::color(brother->left_child) == __rbt_node::BLACK &&
+            __rbt_node::color(brother->right_child) == __rbt_node::BLACK) {
+            brother->__color = __rbt_node::RED;
             __delete_fix(father, father->father, father->father == nullptr ? nullptr : father->brother());
             return;
         }
-        if (father->color == __rbt_node::RED && brother->color == __rbt_node::BLACK &&
-            (brother->left_child == nullptr || brother->left_child->color == __rbt_node::BLACK) &&
-            (brother->right_child == nullptr || brother->right_child->color == __rbt_node::BLACK)) {
-            father->color = __rbt_node::BLACK;
-            brother->color = __rbt_node::RED;
+        if (__rbt_node::color(father) == __rbt_node::RED && __rbt_node::color(brother) == __rbt_node::BLACK &&
+            (brother->left_child == nullptr || brother->left_child->__color == __rbt_node::BLACK) &&
+            (brother->right_child == nullptr || brother->right_child->__color == __rbt_node::BLACK)) {
+            father->__color = __rbt_node::BLACK;
+            brother->__color = __rbt_node::RED;
             return;
         }
-        if (brother->__is_which_child() == __rbt_node::LEFT_CHILD &&
-            (brother->left_child == nullptr || brother->left_child->color == __rbt_node::BLACK)) {
-            brother->right_child->color = __rbt_node::BLACK;
-            brother->color = __rbt_node::RED;
+        if (brother->which_child() == __rbt_node::LEFT_CHILD &&
+            __rbt_node::color(brother->left_child) == __rbt_node::BLACK) {
+            brother->right_child->__color = __rbt_node::BLACK;
+            brother->__color = __rbt_node::RED;
             __left_rotate(brother);
             brother = brother->father;
         }
-        if (brother->__is_which_child() == __rbt_node::RIGHT_CHILD &&
-            (brother->right_child == nullptr || brother->right_child->color == __rbt_node::BLACK)) {
-            brother->left_child->color = __rbt_node::BLACK;
-            brother->color = __rbt_node::RED;
+        if (brother->which_child() == __rbt_node::RIGHT_CHILD &&
+            __rbt_node::color(brother->right_child) == __rbt_node::BLACK) {
+            brother->left_child->__color = __rbt_node::BLACK;
+            brother->__color = __rbt_node::RED;
             __right_rotate(brother);
             brother = brother->father;
         }
-        if (father->color == __rbt_node::RED) {
-            father->color = __rbt_node::BLACK;
-            brother->color = __rbt_node::RED;
+        if (__rbt_node::color(father) == __rbt_node::RED) {
+            father->__color = __rbt_node::BLACK;
+            brother->__color = __rbt_node::RED;
         }
-        switch (brother->__is_which_child()) {
+        switch (brother->which_child()) {
             case __rbt_node::LEFT_CHILD:
-                brother->left_child->color = __rbt_node::BLACK;
+                brother->left_child->__color = __rbt_node::BLACK;
                 __right_rotate(father);
                 break;
             case __rbt_node::RIGHT_CHILD:
-                brother->right_child->color = __rbt_node::BLACK;
+                brother->right_child->__color = __rbt_node::BLACK;
                 break;
         }
     }
@@ -269,12 +276,12 @@ class map {
         if (father == nullptr) {
             child->father = nullptr;
             root = child;
-            child->color = __rbt_node::BLACK;
+            child->__color = __rbt_node::BLACK;
             delete node;
             return;
         }
         // father exists
-        switch (node->__is_which_child()) {
+        switch (node->which_child()) {
             case __rbt_node::LEFT_CHILD:
                 father->left_child = child;
                 break;
@@ -283,15 +290,15 @@ class map {
                 break;
         }
         if (child != nullptr) child->father = father;
-        if (node->color == __rbt_node::RED) {
+        if (__rbt_node::color(node) == __rbt_node::RED) {
             delete node;
             return;
         }
         // node is black, brother exists
         __rbt_node *brother = node->brother();
         // assert(brother != nullptr);
-        if (child != nullptr && child->color == __rbt_node::RED) {
-            child->color = __rbt_node::BLACK;
+        if (__rbt_node::color(child) == __rbt_node::RED) {
+            child->__color = __rbt_node::BLACK;
             delete node;
             return;
         }
@@ -317,14 +324,14 @@ class map {
     __rbt_node *__copy_subtree(__rbt_node *node, __rbt_node *father) {
         if (node == nullptr) return nullptr;
         auto new_node = new __rbt_node(*(node->value));
-        new_node->color = node->color;
+        new_node->__color = node->__color;
         new_node->father = father;
         new_node->left_child = __copy_subtree(node->left_child, new_node);
         new_node->right_child = __copy_subtree(node->right_child, new_node);
         return new_node;
     }
 
-    void __link_list(__rbt_node *node, typename __rbt_node::__which_child which_child) {
+    void __link_list(__rbt_node *node, typename __rbt_node::which_child_e which_child) {
         switch (which_child) {
             case __rbt_node::LEFT_CHILD:
                 __link_three_node(node->father->prev, node, node->father);
@@ -600,7 +607,16 @@ class map {
      *   the iterator to the new element (or the element that prevented the insertion),
      *   the second one is true if insert successfully, or false.
      */
-    pair<iterator, bool> insert(const pair<_Key, _Tp> &value) {}
+    pair<iterator, bool> insert(const pair<_Key, _Tp> &value) {
+        iterator it = find(value.first);
+        if (it == end()) {
+            auto new_node = new __rbt_node(value);
+            __insert(new_node);
+            return {iterator(new_node), true};
+        } else {
+            return {it, false};
+        }
+    }
 
     /**
      * access specified element
@@ -611,7 +627,9 @@ class map {
         try {
             return at(key);
         } catch (index_out_of_bound &) {
-            return __insert(new __rbt_node(key)).first->second;
+            auto new_node = new __rbt_node(key);
+            __insert(new_node);
+            return new_node->value->second;
         }
     }
 
