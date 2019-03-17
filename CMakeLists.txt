@@ -16,6 +16,7 @@ add_executable(priority_queue_four_memcheck priority_queue_data/four.memcheck/co
 add_executable(priority_queue_five priority_queue_data/five/code.cpp)
 add_executable(priority_queue_five_memcheck priority_queue_data/five.memcheck/code.cpp)
 
+add_executable(map_my_test map_data/my_test.cpp)
 add_executable(map_one map_data/one/code.cpp)
 add_executable(map_one_memcheck map_data/one.memcheck/code.cpp)
 add_executable(map_two map_data/two/code.cpp)
