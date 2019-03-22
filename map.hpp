@@ -8,6 +8,22 @@
 
 namespace sjtu {
 
+/**
+ * @brief   A map based on sorted keys
+ *
+ * This container stores pairs of keys and values, and support following operations in O(log n) time: adding a pair,
+ * remove a pair, and querying according to the given key. It also support jumping to the next or previous key
+ * in O(1) time.
+ *
+ * This implementation uses "Red-Black Tree"(with a "bidirectional linked-list" over its nodes) as its internal
+ * structure.
+ *
+ * @tparam  K           The type of keys, must implement CopyConstructor
+ * @tparam  V           The type of values, must implement DefaultConstructor and CopyConstructor
+ * @tparam  __Compare   The class used to compare keys. The instance of @code{Compare} must
+ *                      implement operator()(T, T), which returns true iff the first parameter is smaller than
+ *                      the second. @code{std::less<T>} is used by default.
+ */
 template <typename K, typename V, typename __Compare = std::less<K>>
 class map {
 
@@ -21,6 +37,11 @@ class map {
 
   private:
 
+    /**
+     * @brief   A node of the Red-Black Tree
+     *
+     * @param   which   Iff this node is the right child of its father
+     */
     struct rbt_node {
         using which_e = bool;
         enum color_e {
@@ -39,9 +60,7 @@ class map {
             delete value;
         }
 
-        // used for clone, clone the subtree
-        // only update father's child component and previous/next's next/previous component
-        // component child will be updated when constructing children
+        // only used for clone, clone the subtree
         rbt_node(rbt_node *other, rbt_node *father, rbt_node *prev, rbt_node *next) :
                 value(new value_type(*(other->value))), father(father), prev(prev), next(next),
                 which(other->which), color(other->color) {
@@ -108,6 +127,7 @@ class map {
         b = temp;
     }
 
+    // swap the positions of two nodes in the Red-Black Tree
     void swap_node(rbt_node *a, rbt_node *b) {
         if (root == a) root = b;
         else if (root == b) root = a;
@@ -132,6 +152,7 @@ class map {
         b->update_nearby();
     }
 
+    // rotate the subtree whose root is "x" in the direction of "which"
     void rotate(rbt_node *x, typename rbt_node::which_e which) {
         rbt_node *y = x->child[!which];
         if (root == x) root = y;
@@ -144,6 +165,7 @@ class map {
         y->update_nearby();
     }
 
+    // reduce the depth of target by one to maintain the properties of Red-Black Tree
     void insert_fix(rbt_node *target) {
         rbt_node *father = target->father;
         if (father == nullptr) {
@@ -171,6 +193,7 @@ class map {
         }
     }
 
+    // turn "target" into a red node or increase its depth by one to maintain the properties of Red-Black Tree
     void erase_fix(rbt_node *target, bool recursive = false) {
         if (target->color == RED && !recursive) return;
         rbt_node *child = target->child[target->child[LEFT] == nullptr];
@@ -207,6 +230,7 @@ class map {
             return;
         }
         if (cousin[!(target->which)] == nullptr || cousin[!(target->which)]->color == BLACK) {
+            // cousin[target->which] is certain to be a red node
             cousin[target->which]->color = BLACK;
             brother->color = RED;
             rotate(brother, !(target->which));
@@ -218,6 +242,7 @@ class map {
         rotate(father, target->which);
     }
 
+    // insert a new node
     template <typename U>
     pair<rbt_node *, bool> __insert(const K &key, const U &value) {
         if (root == nullptr) {
@@ -242,14 +267,17 @@ class map {
         return {new_node, true};
     }
 
+    // insert a new node with given key and value
     pair<rbt_node *, bool> __insert(const value_type &value) {
         return __insert(value.first, value);
     }
 
+    // insert a new node with given key and the default of type "V"
     rbt_node *__insert(const K &key) {
         return __insert(key, key).first;
     }
 
+    // erase a node
     void erase(rbt_node *target) {
         __size--;
         if (target->child[LEFT] != nullptr && target->child[RIGHT] != nullptr) {
@@ -268,17 +296,26 @@ class map {
     }
 
   public:
+    /**
+     * @brief   Default constructor, which constructs a @code{map} with no elements
+     */
     map() : head(new rbt_node), tail(new rbt_node), root(nullptr), comparing_function(), __size(0) {
         head->next = tail;
         tail->prev = head;
     }
 
+    /**
+     * @brief   Copy constructor
+     */
     map(const map &other) : map() {
         if (other.__size == 0) return;
         __size = other.__size;
         root = new rbt_node(other.root, nullptr, head, tail);
     }
 
+    /**
+     * @brief   Assignment operator
+     */
     map &operator=(const map &other) {
         if (this == &other) return *this;
         clear();
@@ -288,6 +325,9 @@ class map {
         return *this;
     }
 
+    /**
+     * @brief   Deconstructor
+     */
     ~map() {
         clear();
         delete head;
@@ -295,6 +335,9 @@ class map {
     }
 
   public:
+    /**
+     * @brief   Clear everything in this @code{map}
+     */
     void clear() {
         __size = 0;
         auto cur = head->next;
@@ -308,30 +351,44 @@ class map {
         root = nullptr;
     }
 
+    /**
+     * @return  True iff this @code{map} contains nothing
+     */
     bool empty() const {
         return __size == 0;
     }
 
+    /**
+     * @return  The size of this @code{map}
+     */
     size_t size() const {
         return __size;
     }
 
+    /**
+     * @return  An iterator pointing to the first pair of key and value in this @code{map}
+     */
     iterator begin() {
         return iterator(this, head->next);
     }
-
     const_iterator cbegin() const {
         return const_iterator(this, head->next);
     }
 
+    /**
+     * @return  An iterator pointing to the next of the last pair of key and value in this @code{map}
+     */
     iterator end() {
         return iterator(this, tail);
     }
-
     const_iterator cend() const {
         return const_iterator(this, tail);
     }
 
+    /**
+     * @return  An iterator pointing to the pair with the given key. If such key does not exist in this @code{map},
+     *          @code{end()} or @code{cend()} will be returned.
+     */
     iterator find(const K &key) {
         auto cur = root;
         while (cur != nullptr) {
@@ -344,7 +401,6 @@ class map {
         }
         return end();
     }
-
     const_iterator find(const K &key) const {
         auto cur = root;
         while (cur != nullptr) {
@@ -358,35 +414,60 @@ class map {
         return cend();
     }
 
+    /**
+     * @brief   Count how many pairs with given key exist in this @code{map}. Note that as this @code{map} does not
+     *          allow storing multiple pairs with the same key, only @code{0} or @code{1} may be returned.
+     */
     size_t count(const K &key) const {
         return find(key) == cend() ? 0 : 1;
     }
 
+    /**
+     * @brief   Return the reference to the value associated with the given key.
+     *
+     * (only for @code{operator[]()}) Note that if the given key does not exist, a new pair associating the given key
+     * and the default value of type @code{V} will be added into the @code{map}, and then the reference to the value
+     * will be returned.
+     *
+     * @throw   index_out_of _bound (except for @code{operator[]()}) if the given key does not exist
+     * @param key
+     * @return
+     */
     V &at(const K &key) {
         iterator it = find(key);
         if (it == end()) throw index_out_of_bound();
         return it->second;
     }
-
     const V &at(const K &key) const {
         const_iterator it = find(key);
         if (it == cend()) throw index_out_of_bound();
         return it->second;
     }
-
     V &operator[](const K &key) {
         return __insert(key)->value->second;
     }
-
     const V &operator[](const K &key) const {
         return at(key);
     }
 
+    /**
+     * @brief   Adding a new pair with the given key and value
+     *
+     * Note that if the given key already exist in this @code{map}, nothing will happen.
+     *
+     * @return  A pair whose first element is a iterator pointing to the newly added pair or the pair which already
+     *          exists with the given key, and whose second element is @code{true} iff a new pair is added
+     */
     pair<iterator, bool> insert(const value_type &value) {
         auto result = __insert(value);
         return {iterator(this, result.first), result.second};
     }
 
+    /**
+     * @brief   Removing the specified pair
+     *
+     * @throw   invalid_iterator    If the iterator given does not point to a pair in this @code{map}
+     */
     void erase(iterator pos) {
         if (pos.__map != this || pos == end()) throw invalid_iterator();
         erase(pos.node);
