@@ -8,443 +8,283 @@
 
 namespace sjtu {
 
-template <typename _Key, typename _Tp, class _Compare = std::less<_Key>>
+template <typename K, typename V, typename __Compare = std::less<K>>
 class map {
+
   public:
-    typedef pair<const _Key, _Tp> value_type;
+    using value_type = pair<const K, V>;
+
   public:
     class iterator;
 
     class const_iterator;
 
   private:
-    struct __list_node {
-        __list_node *prev, *next;
-        bool __has_rbt_node_info;
 
-        __list_node() : prev(nullptr), next(nullptr) {
-            __has_rbt_node_info = false;
-        }
-
-        virtual ~__list_node() = default;
-    };
-
-    struct __rbt_node : public __list_node {
+    struct rbt_node {
+        using which_e = bool;
         enum color_e {
-            BLACK, RED
+            RED, BLACK
         };
-        enum which_child_e {
-            LEFT_CHILD, RIGHT_CHILD
-        };
-        __rbt_node *father, *left_child, *right_child;
+        rbt_node *prev, *next;
+        rbt_node *father, *child[2];
+        which_e which;
+        color_e color;
         value_type *value;
-        color_e __color;
 
-        explicit __rbt_node(const value_type &value) :
-                value(new value_type(value)),
-                father(nullptr), left_child(nullptr), right_child(nullptr), __color(RED) {
-            __list_node::__has_rbt_node_info = true;
+        // used for head, tail, unnecessary to initialize components
+        rbt_node() { value = nullptr; }
+
+        ~rbt_node() {
+            delete value;
         }
 
-        explicit __rbt_node(const _Key &key) : __rbt_node(value_type(key, _Tp())) {}
-
-        which_child_e which_child() {
-            if (father->left_child == this)
-                return LEFT_CHILD;
+        // used for clone, clone the subtree
+        // only update father's child component and previous/next's next/previous component
+        // component child will be updated when constructing children
+        rbt_node(rbt_node *other, rbt_node *father, rbt_node *prev, rbt_node *next) :
+                value(new value_type(*(other->value))), father(father), prev(prev), next(next),
+                which(other->which), color(other->color) {
+            child[LEFT] = child[RIGHT] = nullptr;
+            prev->next = next->prev = this;
+            if (other->child[LEFT] != nullptr)
+                child[LEFT] = new rbt_node(other->child[LEFT], this, prev, this);
             else
-                return RIGHT_CHILD;
+                child[LEFT] = nullptr;
+            if (other->child[RIGHT] != nullptr)
+                child[RIGHT] = new rbt_node(other->child[RIGHT], this, this, next);
+            else
+                child[RIGHT] = nullptr;
         }
 
-        __rbt_node *brother() {
-            switch (which_child()) {
-                case LEFT_CHILD:
-                    return father->right_child;
-                case RIGHT_CHILD:
-                    return father->left_child;
+        void update_nearby() {
+            next->prev = prev->next = this;
+            if (father != nullptr) father->child[which] = this;
+            if (child[LEFT] != nullptr) {
+                child[LEFT]->father = this;
+                child[LEFT]->which = LEFT;
+            }
+            if (child[RIGHT] != nullptr) {
+                child[RIGHT]->father = this;
+                child[RIGHT]->which = RIGHT;
             }
         }
 
-        static color_e color(__rbt_node *node) {
-            if (node == nullptr) return BLACK;
-            return node->__color;
+        rbt_node(const value_type &value, rbt_node *prev, rbt_node *next,
+                 rbt_node *father, rbt_node *left_child, rbt_node *right_child, which_e which) :
+                value(new value_type(value)), prev(prev), next(next), father(father), which(which), color(RED) {
+            child[LEFT] = left_child, child[RIGHT] = right_child;
+            update_nearby();
         }
 
-        ~__rbt_node() override {
-            delete value;
+        rbt_node(const K &key, rbt_node *prev, rbt_node *next,
+                 rbt_node *father, rbt_node *left_child, rbt_node *right_child, which_e which) :
+                rbt_node(value_type(key, V()), prev, next, father, left_child, right_child, which) {}
+
+        rbt_node *brother() {
+            return father->child[!which];
         }
     };
 
   private:
-    __list_node *head, *tail;
-    __rbt_node *root;
-    _Compare __compare_function;
+    rbt_node *head, *tail, *root;
+    __Compare comparing_function;
     size_t __size;
 
-  private:
-    void __link_node(__list_node *a, __list_node *b) {
+    static constexpr typename rbt_node::color_e BLACK = rbt_node::BLACK;
+    static constexpr typename rbt_node::color_e RED = rbt_node::RED;
+    static constexpr typename rbt_node::which_e LEFT = false;
+    static constexpr typename rbt_node::which_e RIGHT = true;
+
+    static void link_node(rbt_node *a, rbt_node *b) {
         a->next = b;
         b->prev = a;
     }
 
-    void __link_three_node(__list_node *a, __list_node *b, __list_node *c) {
-        __link_node(a, b);
-        __link_node(b, c);
-    }
-
-    void __right_rotate(__rbt_node *y) {
-        __rbt_node *x = y->left_child;
-        y->left_child = x->right_child;
-        if (x->right_child != nullptr) x->right_child->father = y;
-        x->father = y->father;
-        if (y->father != nullptr) {
-            if (y->father->left_child == y)
-                y->father->left_child = x;
-            else
-                y->father->right_child = x;
-        } else {
-            root = x;
-        }
-        x->right_child = y;
-        y->father = x;
-    }
-
-    void __left_rotate(__rbt_node *x) {
-        __rbt_node *y = x->right_child;
-        x->right_child = y->left_child;
-        if (y->left_child != nullptr) y->left_child->father = x;
-        y->father = x->father;
-        if (x->father != nullptr) {
-            if (x->father->left_child == x)
-                x->father->left_child = y;
-            else
-                x->father->right_child = y;
-        } else {
-            root = y;
-        }
-        y->left_child = x;
-        x->father = y;
-    }
-
-    void __insert_fix(__rbt_node *target) {
-        if (target->father == nullptr) {
-            target->__color = __rbt_node::BLACK;
-        } else if (__rbt_node::color(target->father) == __rbt_node::BLACK) {
-            // do nothing
-        } else if (__rbt_node::color(target->father->brother()) == __rbt_node::RED) {
-            target->father->__color = __rbt_node::BLACK;
-            target->father->brother()->__color = __rbt_node::BLACK;
-            target->father->father->__color = __rbt_node::RED;
-            __insert_fix(target->father->father);
-        } else {
-            if (target->which_child() != target->father->which_child()) {
-                switch (target->which_child()) {
-                    case __rbt_node::LEFT_CHILD:
-                        __right_rotate(target->father);
-                        __left_rotate(target->father);
-                        target->__color = __rbt_node::BLACK;
-                        target->left_child->__color = __rbt_node::RED;
-                        break;
-                    case __rbt_node::RIGHT_CHILD:
-                        __left_rotate(target->father);
-                        __right_rotate(target->father);
-                        target->__color = __rbt_node::BLACK;
-                        target->right_child->__color = __rbt_node::RED;
-                        break;
-                }
-            } else {
-                switch (target->which_child()) {
-                    case __rbt_node::LEFT_CHILD:
-                        __right_rotate(target->father->father);
-                        target->father->__color = __rbt_node::BLACK;
-                        target->brother()->__color = __rbt_node::RED;
-                        break;
-                    case __rbt_node::RIGHT_CHILD:
-                        __left_rotate(target->father->father);
-                        target->father->__color = __rbt_node::BLACK;
-                        target->brother()->__color = __rbt_node::RED;
-                        break;
-                }
-            }
-        }
-    }
-
-    void __insert(__rbt_node *new_node) {
-        if (root == nullptr) {
-            new_node->__color = __rbt_node::BLACK;
-            root = new_node;
-            __link_three_node(head, new_node, tail);
-            __size++;
-            return;
-        }
-
-        __rbt_node *y = root, *x = root;
-        while (x != nullptr) {
-            y = x;
-            if (__compare_function(new_node->value->first, x->value->first))
-                x = x->left_child;
-            else
-                x = x->right_child;
-        }
-
-        if (__compare_function(new_node->value->first, y->value->first)) {
-            y->left_child = new_node;
-            new_node->father = y;
-            __link_three_node(y->prev, new_node, y);
-        } else {
-            y->right_child = new_node;
-            new_node->father = y;
-            __link_three_node(y, new_node, y->next);
-        }
-
-        __size++;
-        __insert_fix(new_node);
-    }
-
-    void __delete_fix(__rbt_node *node, __rbt_node *father, __rbt_node *brother) {
-        if (father == nullptr) {
-            node->__color = __rbt_node::BLACK;
-            return;
-        }
-        if (__rbt_node::color(brother) == __rbt_node::RED) {
-            father->__color = __rbt_node::RED;
-            brother->__color = __rbt_node::BLACK;
-            switch (brother->which_child()) {
-                case __rbt_node::LEFT_CHILD:
-                    __right_rotate(father);
-                    brother = father->left_child;
-                    break;
-                case __rbt_node::RIGHT_CHILD:
-                    __left_rotate(father);
-                    brother = father->right_child;
-                    break;
-            }
-        }
-        if (__rbt_node::color(father) == __rbt_node::BLACK && __rbt_node::color(brother) == __rbt_node::BLACK &&
-            __rbt_node::color(brother->left_child) == __rbt_node::BLACK &&
-            __rbt_node::color(brother->right_child) == __rbt_node::BLACK) {
-            brother->__color = __rbt_node::RED;
-            __delete_fix(father, father->father, father->father == nullptr ? nullptr : father->brother());
-            return;
-        }
-        if (__rbt_node::color(father) == __rbt_node::RED && __rbt_node::color(brother) == __rbt_node::BLACK &&
-            (brother->left_child == nullptr || brother->left_child->__color == __rbt_node::BLACK) &&
-            (brother->right_child == nullptr || brother->right_child->__color == __rbt_node::BLACK)) {
-            father->__color = __rbt_node::BLACK;
-            brother->__color = __rbt_node::RED;
-            return;
-        }
-        if (brother->which_child() == __rbt_node::LEFT_CHILD &&
-            __rbt_node::color(brother->left_child) == __rbt_node::BLACK) {
-            brother->right_child->__color = __rbt_node::BLACK;
-            brother->__color = __rbt_node::RED;
-            __left_rotate(brother);
-            brother = brother->father;
-        }
-        if (brother->which_child() == __rbt_node::RIGHT_CHILD &&
-            __rbt_node::color(brother->right_child) == __rbt_node::BLACK) {
-            brother->left_child->__color = __rbt_node::BLACK;
-            brother->__color = __rbt_node::RED;
-            __right_rotate(brother);
-            brother = brother->father;
-        }
-        if (__rbt_node::color(father) == __rbt_node::RED) {
-            father->__color = __rbt_node::BLACK;
-            brother->__color = __rbt_node::RED;
-        }
-        switch (brother->which_child()) {
-            case __rbt_node::LEFT_CHILD:
-                brother->left_child->__color = __rbt_node::BLACK;
-                __right_rotate(father);
-                break;
-            case __rbt_node::RIGHT_CHILD:
-                brother->right_child->__color = __rbt_node::BLACK;
-                __left_rotate(father);
-                break;
-        }
-    }
-
-    void __erase_leaf(__rbt_node *node) {
-        __rbt_node *father = node->father;
-        __rbt_node *child = node->left_child == nullptr ? node->right_child : node->left_child;
-
-        if (father == nullptr && child == nullptr) {
-            root = nullptr;
-            delete node;
-            return;
-        }
-        if (father == nullptr) {
-            child->father = nullptr;
-            root = child;
-            child->__color = __rbt_node::BLACK;
-            delete node;
-            return;
-        }
-        // father exists
-
-        __rbt_node *brother = node->brother();
-        switch (node->which_child()) {
-            case __rbt_node::LEFT_CHILD:
-                father->left_child = child;
-                break;
-            case __rbt_node::RIGHT_CHILD:
-                father->right_child = child;
-                break;
-        }
-        if (child != nullptr) child->father = father;
-        if (__rbt_node::color(node) == __rbt_node::RED) {
-            delete node;
-            return;
-        }
-        // node is black, brother exists
-        // assert(brother != nullptr);
-        if (__rbt_node::color(child) == __rbt_node::RED) {
-            child->__color = __rbt_node::BLACK;
-            delete node;
-            return;
-        }
-        delete node;
-        __delete_fix(child, father, brother);
-    }
-
     template <typename T>
-    void __swap(T &a, T &b) {
+    static void __swap(T &a, T &b) {
         T temp = a;
         a = b;
         b = temp;
     }
 
-    void __swap_rbt_node(__rbt_node *a, __rbt_node *b) {
+    void swap_node(rbt_node *a, rbt_node *b) {
         if (root == a) root = b;
         else if (root == b) root = a;
-        if (a->right_child == b) {
-            typename __rbt_node::which_child_e a_which_child =
-                    a->father == nullptr ? __rbt_node::LEFT_CHILD : a->which_child();
-            if (a->father != nullptr) {
-                switch (a->which_child()) {
-                    case __rbt_node::LEFT_CHILD:
-                        a->father->left_child = b;
-                        break;
-                    case __rbt_node::RIGHT_CHILD:
-                        a->father->right_child = b;
-                        break;
-                }
-            }
-
-            if (a->left_child != nullptr) a->left_child->father = b;
-            if (b->left_child != nullptr) b->left_child->father = a;
-            if (b->right_child != nullptr) b->right_child->father = a;
-
-            b->father = a->father;
-            a->father = b;
-            __swap(a->left_child, b->left_child);
-            a->right_child = b->right_child;
-            b->right_child = a;
-        } else {
-            typename __rbt_node::which_child_e a_which_child =
-                    a->father == nullptr ? __rbt_node::LEFT_CHILD : a->which_child();
-            typename __rbt_node::which_child_e b_which_child =
-                    b->father == nullptr ? __rbt_node::LEFT_CHILD : b->which_child();
-            if (a->father != nullptr) {
-                switch (a_which_child) {
-                    case __rbt_node::LEFT_CHILD:
-                        a->father->left_child = b;
-                        break;
-                    case __rbt_node::RIGHT_CHILD:
-                        a->father->right_child = b;
-                        break;
-                }
-            }
-            if (a->left_child != nullptr) a->left_child->father = b;
-            if (a->right_child != nullptr) a->right_child->father = b;
-            if (b->father != nullptr) {
-                switch (b_which_child) {
-                    case __rbt_node::LEFT_CHILD:
-                        b->father->left_child = a;
-                        break;
-                    case __rbt_node::RIGHT_CHILD:
-                        b->father->right_child = a;
-                        break;
-                }
-            }
-            if (b->left_child != nullptr) b->left_child->father = a;
-            if (b->right_child != nullptr) b->right_child->father = a;
-
-            __swap(a->father, b->father);
-            __swap(a->left_child, b->left_child);
-            __swap(a->right_child, b->right_child);
-        }
-        __swap(a->__color, b->__color);
+        __swap(a->prev, b->prev);
+        __swap(a->next, b->next);
+        __swap(a->father, b->father);
+        __swap(a->child[LEFT], b->child[LEFT]);
+        __swap(a->child[RIGHT], b->child[RIGHT]);
+        __swap(a->color, b->color);
+        __swap(a->which, b->which);
+        if (a->prev == a) a->prev = b;
+        if (a->next == a) a->next = b;
+        if (a->father == a) a->father = b;
+        if (a->child[LEFT] == a) a->child[LEFT] = b;
+        if (a->child[RIGHT] == a) a->child[RIGHT] = b;
+        if (b->prev == b) b->prev = a;
+        if (b->next == b) b->next = a;
+        if (b->father == b) b->father = a;
+        if (b->child[LEFT] == b) b->child[LEFT] = a;
+        if (b->child[RIGHT] == b) b->child[RIGHT] = a;
+        a->update_nearby();
+        b->update_nearby();
     }
-    void __erase(__rbt_node *node) {
-        __size--;
-        __link_node(node->prev, node->next);
 
-        if (node->left_child == nullptr || node->right_child == nullptr) {
-            __erase_leaf(node);
+    void rotate(rbt_node *x, typename rbt_node::which_e which) {
+        rbt_node *y = x->child[!which];
+        if (root == x) root = y;
+        x->child[!which] = y->child[which];
+        y->father = x->father;
+        y->which = x->which;
+        x->father = y;
+        x->which = which;
+        x->update_nearby();
+        y->update_nearby();
+    }
+
+    void insert_fix(rbt_node *target) {
+        rbt_node *father = target->father;
+        if (father == nullptr) {
+            target->color = BLACK;
             return;
         }
-
-        __rbt_node *replace_node = (__rbt_node *) node->next;
-        __swap_rbt_node(node, replace_node);
-        __erase_leaf(node);
-    }
-
-    __rbt_node *__copy_subtree(__rbt_node *node, __rbt_node *father) {
-        if (node == nullptr) return nullptr;
-        auto new_node = new __rbt_node(*(node->value));
-        new_node->__color = node->__color;
-        new_node->father = father;
-        new_node->left_child = __copy_subtree(node->left_child, new_node);
-        new_node->right_child = __copy_subtree(node->right_child, new_node);
-        return new_node;
-    }
-
-    void __link_list(__rbt_node *node, typename __rbt_node::which_child_e which_child) {
-        switch (which_child) {
-            case __rbt_node::LEFT_CHILD:
-                __link_three_node(node->father->prev, node, node->father);
-                break;
-            case __rbt_node::RIGHT_CHILD:
-                __link_three_node(node->father, node, node->father->next);
-                break;
+        if (father->color == BLACK) return;
+        rbt_node *grandpa = father->father; // non-null
+        rbt_node *uncle = target->father->brother();
+        if (uncle == nullptr || uncle->color == BLACK) {
+            if (target->which == father->which) {
+                father->color = BLACK;
+                grandpa->color = RED;
+                rotate(grandpa, !(target->which));
+            } else {
+                target->color = BLACK;
+                grandpa->color = RED;
+                rotate(father, !(target->which));
+                rotate(grandpa, !(target->which));
+            }
+        } else {
+            father->color = uncle->color = BLACK;
+            grandpa->color = RED;
+            insert_fix(grandpa);
         }
-        if (node->left_child != nullptr) __link_list(node->left_child, __rbt_node::LEFT_CHILD);
-        if (node->right_child != nullptr) __link_list(node->right_child, __rbt_node::RIGHT_CHILD);
+    }
+
+    void erase_fix(rbt_node *target, bool recursive = false) {
+        if (target->color == RED && !recursive) return;
+        rbt_node *child = target->child[target->child[LEFT] == nullptr];
+        if (child != nullptr && child->color == RED && !recursive) {
+            child->color = BLACK;
+            return;
+        }
+        if (root == target) {
+            target->color = BLACK;
+            return;
+        }
+        rbt_node *father = target->father; // non-null
+        rbt_node *brother = target->brother(); // non-null
+        rbt_node **cousin = brother->child;
+        if (father->color == BLACK && brother->color == BLACK &&
+            (cousin[LEFT] == nullptr || cousin[LEFT]->color == BLACK) &&
+            (cousin[RIGHT] == nullptr || cousin[RIGHT]->color == BLACK)) {
+            brother->color = RED;
+            erase_fix(father, true);
+            return;
+        }
+        if (brother->color == RED) {
+            father->color = RED;
+            brother->color = BLACK;
+            rotate(father, target->which);
+            brother = target->brother();
+            cousin = brother->child;
+        }
+        if (father->color == RED && brother->color == BLACK &&
+            (cousin[LEFT] == nullptr || cousin[LEFT]->color == BLACK) &&
+            (cousin[RIGHT] == nullptr || cousin[RIGHT]->color == BLACK)) {
+            father->color = BLACK;
+            brother->color = RED;
+            return;
+        }
+        if (cousin[!(target->which)] == nullptr || cousin[!(target->which)]->color == BLACK) {
+            cousin[target->which]->color = BLACK;
+            brother->color = RED;
+            rotate(brother, !(target->which));
+            brother = target->brother();
+            cousin = brother->child;
+        }
+        __swap(father->color, brother->color);
+        cousin[!(target->which)]->color = BLACK;
+        rotate(father, target->which);
+    }
+
+    template <typename U>
+    pair<rbt_node *, bool> __insert(const K &key, const U &value) {
+        if (root == nullptr) {
+            auto new_node = new rbt_node(value, head, tail, nullptr, nullptr, nullptr, LEFT);
+            root = new_node;
+            __size++;
+            insert_fix(new_node);
+            return {new_node, true};
+        }
+        rbt_node *cur_node = root;
+        typename rbt_node::which_e which;
+        while (true) {
+            which = comparing_function(cur_node->value->first, key);
+            if (!which && !comparing_function(key, cur_node->value->first)) return {cur_node, false};
+            if (cur_node->child[which] == nullptr) break;
+            cur_node = cur_node->child[which];
+        }
+        auto new_node = new rbt_node(value, which ? cur_node : cur_node->prev, which ? cur_node->next : cur_node,
+                                     cur_node, nullptr, nullptr, which);
+        __size++;
+        insert_fix(new_node);
+        return {new_node, true};
+    }
+
+    pair<rbt_node *, bool> __insert(const value_type &value) {
+        return __insert(value.first, value);
+    }
+
+    rbt_node *__insert(const K &key) {
+        return __insert(key, key).first;
+    }
+
+    void erase(rbt_node *target) {
+        __size--;
+        if (target->child[LEFT] != nullptr && target->child[RIGHT] != nullptr) {
+            swap_node(target, target->next);
+        }
+        erase_fix(target);
+        link_node(target->prev, target->next);
+        rbt_node *child = target->child[target->child[LEFT] == nullptr];
+        if (target == root) root = child;
+        else target->father->child[target->which] = child;
+        if (child != nullptr) {
+            child->father = target->father;
+            child->which = target->which;
+        }
+        delete target;
     }
 
   public:
-    map() : head(new __list_node), tail(new __list_node), root(nullptr), __compare_function(_Compare()), __size(0) {
-        __link_node(head, tail);
+    map() : head(new rbt_node), tail(new rbt_node), root(nullptr), comparing_function(), __size(0) {
+        head->next = tail;
+        tail->prev = head;
     }
 
-    map(const map &other) : head(new __list_node), tail(new __list_node),
-                            root(__copy_subtree(other.root, nullptr)),
-                            __compare_function(_Compare()), __size(other.__size) {
-        if (root == nullptr) {
-            __link_node(head, tail);
-        } else {
-            __link_three_node(head, root, tail);
-            if (root->left_child != nullptr) __link_list(root->left_child, __rbt_node::LEFT_CHILD);
-            if (root->right_child != nullptr) __link_list(root->right_child, __rbt_node::RIGHT_CHILD);
-        }
+    map(const map &other) : map() {
+        if (other.__size == 0) return;
+        __size = other.__size;
+        root = new rbt_node(other.root, nullptr, head, tail);
     }
 
     map &operator=(const map &other) {
         if (this == &other) return *this;
         clear();
-        delete head;
-        delete tail;
-        head = new __list_node;
-        tail = new __list_node;
-        root = __copy_subtree(other.root, nullptr);
         __size = other.__size;
-        if (root == nullptr) {
-            __link_node(head, tail);
-        } else {
-            __link_three_node(head, root, tail);
-            if (root->left_child != nullptr) __link_list(root->left_child, __rbt_node::LEFT_CHILD);
-            if (root->right_child != nullptr) __link_list(root->right_child, __rbt_node::RIGHT_CHILD);
-        }
+        if (other.__size == 0) return *this;
+        root = new rbt_node(other.root, nullptr, head, tail);
         return *this;
     }
 
@@ -455,67 +295,165 @@ class map {
     }
 
   public:
+    void clear() {
+        __size = 0;
+        auto cur = head->next;
+        while (cur != tail) {
+            auto temp = cur;
+            cur = cur->next;
+            delete temp;
+        }
+        head->next = tail;
+        tail->prev = head;
+        root = nullptr;
+    }
+
+    bool empty() const {
+        return __size == 0;
+    }
+
+    size_t size() const {
+        return __size;
+    }
+
+    iterator begin() {
+        return iterator(this, head->next);
+    }
+
+    const_iterator cbegin() const {
+        return const_iterator(this, head->next);
+    }
+
+    iterator end() {
+        return iterator(this, tail);
+    }
+
+    const_iterator cend() const {
+        return const_iterator(this, tail);
+    }
+
+    iterator find(const K &key) {
+        auto cur = root;
+        while (cur != nullptr) {
+            if (comparing_function(key, cur->value->first))
+                cur = cur->child[LEFT];
+            else if (comparing_function(cur->value->first, key))
+                cur = cur->child[RIGHT];
+            else
+                return iterator(this, cur);
+        }
+        return end();
+    }
+
+    const_iterator find(const K &key) const {
+        auto cur = root;
+        while (cur != nullptr) {
+            if (comparing_function(key, cur->value->first))
+                cur = cur->child[LEFT];
+            else if (comparing_function(cur->value->first, key))
+                cur = cur->child[RIGHT];
+            else
+                return const_iterator(this, cur);
+        }
+        return cend();
+    }
+
+    size_t count(const K &key) const {
+        return find(key) == cend() ? 0 : 1;
+    }
+
+    V &at(const K &key) {
+        iterator it = find(key);
+        if (it == end()) throw index_out_of_bound();
+        return it->second;
+    }
+
+    const V &at(const K &key) const {
+        const_iterator it = find(key);
+        if (it == cend()) throw index_out_of_bound();
+        return it->second;
+    }
+
+    V &operator[](const K &key) {
+        return __insert(key)->value->second;
+    }
+
+    const V &operator[](const K &key) const {
+        return at(key);
+    }
+
+    pair<iterator, bool> insert(const value_type &value) {
+        auto result = __insert(value);
+        return {iterator(this, result.first), result.second};
+    }
+
+    void erase(iterator pos) {
+        if (pos.__map != this || pos == end()) throw invalid_iterator();
+        erase(pos.node);
+    }
+
+  public:
     class iterator {
         friend const_iterator;
 
         friend void map::erase(iterator);
 
       public:
-        using value_type = pair<const _Key, _Tp>;
-        using pointer = value_type *;
+        using value_type = pair<const K, V>;
         using reference = value_type &;
+        using pointer = value_type *;
 
       private:
         map *__map;
-        __list_node *node;
+        rbt_node *node;
 
       public:
-        explicit iterator(map *__map = nullptr, __list_node *node = nullptr) : __map(__map), node(node) {}
+        iterator() : __map(nullptr), node(nullptr) {}
+
+        iterator(map *__map, rbt_node *node) : __map(__map), node(node) {}
 
         iterator(const iterator &other) = default;
 
+        iterator &operator=(const iterator &other) {
+            __map = other.__map;
+            node = other.node;
+        }
+
+        operator const_iterator() {
+            return const_iterator(*this);
+        }
+
         const iterator operator++(int) {
-            if (*this == __map->end()) throw invalid_iterator();
-            if (node->next == nullptr) throw invalid_iterator();
-            iterator temp = *this;
-            node = node->next;
-            return temp;
+            iterator backup(*this);
+            operator++();
+            return backup;
         }
 
         iterator &operator++() {
-            if (*this == __map->end()) throw invalid_iterator();
-            if (node == nullptr) throw invalid_iterator();
+            if (node == nullptr || node == __map->tail) throw invalid_iterator();
             node = node->next;
             return *this;
         }
 
         const iterator operator--(int) {
-            if (*this == __map->begin()) throw invalid_iterator();
-            if (node == nullptr) throw invalid_iterator();
-            iterator temp = *this;
-            node = node->prev;
-            return temp;
+            iterator backup(*this);
+            operator--();
+            return backup;
         }
 
         iterator &operator--() {
-            if (*this == __map->begin()) throw invalid_iterator();
-            if (node == nullptr) throw invalid_iterator();
+            if (node == nullptr || node == __map->head->next) throw invalid_iterator();
             node = node->prev;
             return *this;
         }
 
         reference operator*() const {
-            if (node == nullptr) throw invalid_iterator();
-            if (!node->__has_rbt_node_info) throw invalid_iterator();
-            auto __rbt_node_pointer = (__rbt_node *) node;
-            return *(__rbt_node_pointer->value);
+            return *operator->();
         }
 
         pointer operator->() const noexcept {
-            if (node == nullptr) throw invalid_iterator();
-            if (!node->__has_rbt_node_info) throw invalid_iterator();
-            auto __rbt_node_pointer = (__rbt_node *) node;
-            return __rbt_node_pointer->value;
+            if (node == nullptr || node == __map->tail) throw invalid_iterator();
+            return node->value;
         }
 
         bool operator==(const iterator &rhs) const {
@@ -539,64 +477,59 @@ class map {
         friend iterator;
 
       public:
-        using value_type = const pair<const _Key, _Tp>;
-        using pointer = const value_type *;
-        using reference = const value_type &;
+        using value_type = const pair<const K, V>;
+        using reference = value_type &;
+        using pointer = value_type *;
 
       private:
         const map *__map;
-        const __list_node *node;
+        const rbt_node *node;
 
       public:
-        explicit const_iterator(const map *__map = nullptr, const __list_node *node = nullptr) :
-                __map(__map), node(node) {}
+        const_iterator() : __map(nullptr), node(nullptr) {}
+
+        const_iterator(const map *__map, const rbt_node *node) : __map(__map), node(node) {}
 
         const_iterator(const const_iterator &other) = default;
 
-        const_iterator(const iterator &other) : __map(other.__map), node(other.node) {}
+        explicit const_iterator(const iterator &other) : __map(other.__map), node(other.node) {}
+
+        const_iterator &operator=(const const_iterator &other) {
+            __map = other.__map;
+            node = other.node;
+        }
 
         const const_iterator operator++(int) {
-            if (*this == __map->cend()) throw invalid_iterator();
-            if (node->next == nullptr) throw invalid_iterator();
-            const_iterator temp = *this;
-            node = node->next;
-            return temp;
+            const_iterator backup(*this);
+            operator++();
+            return backup;
         }
 
         const_iterator &operator++() {
-            if (*this == __map->cend()) throw invalid_iterator();
-            if (node == nullptr) throw invalid_iterator();
+            if (node == nullptr || node == __map->tail) throw invalid_iterator();
             node = node->next;
             return *this;
         }
 
         const const_iterator operator--(int) {
-            if (*this == __map->cbegin()) throw invalid_iterator();
-            if (node == nullptr) throw invalid_iterator();
-            const_iterator temp = *this;
-            node = node->prev;
-            return temp;
+            const_iterator backup(*this);
+            operator--();
+            return backup;
         }
 
         const_iterator &operator--() {
-            if (*this == __map->cbegin()) throw invalid_iterator();
-            if (node == nullptr) throw invalid_iterator();
+            if (node == nullptr || node == __map->head->next) throw invalid_iterator();
             node = node->prev;
             return *this;
         }
 
         reference operator*() const {
-            if (node == nullptr) throw invalid_iterator();
-            if (!node->__has_rbt_node_info) throw invalid_iterator();
-            auto __rbt_node_pointer = (__rbt_node *) node;
-            return *(__rbt_node_pointer->value);
+            return *operator->();
         }
 
         pointer operator->() const noexcept {
-            if (node == nullptr) throw invalid_iterator();
-            if (!node->__has_rbt_node_info) throw invalid_iterator();
-            auto __rbt_node_pointer = (__rbt_node *) node;
-            return __rbt_node_pointer->value;
+            if (node == nullptr || node == __map->tail) throw invalid_iterator();
+            return node->value;
         }
 
         bool operator==(const iterator &rhs) const {
@@ -615,161 +548,6 @@ class map {
             return node != rhs.node;
         }
     };
-
-  public:
-    iterator begin() {
-        return iterator(this, head->next);
-    }
-
-    const_iterator cbegin() const {
-        return const_iterator(this, head->next);
-    }
-
-    iterator end() {
-        return iterator(this, tail);
-    }
-
-    const_iterator cend() const {
-        return const_iterator(this, tail);
-    }
-
-    iterator find(const _Key &key) {
-        __rbt_node *cur = root;
-        while (cur != nullptr) {
-            if (__compare_function(key, cur->value->first))
-                cur = cur->left_child;
-            else if (__compare_function(cur->value->first, key))
-                cur = cur->right_child;
-            else
-                return iterator(this, cur);
-        }
-        return end();
-    }
-
-    const_iterator find(const _Key &key) const {
-        __rbt_node *cur = root;
-        while (cur != nullptr) {
-            if (__compare_function(key, cur->value->first))
-                cur = cur->left_child;
-            else if (__compare_function(cur->value->first, key))
-                cur = cur->right_child;
-            else
-                return const_iterator(this, cur);
-        }
-        return cend();
-    }
-
-  public:
-    /**
-     * access specified element with bounds checking
-     * Returns a reference to the mapped value of the element with key equivalent to key.
-     * If no such element exists, an exception of type `index_out_of_bound'
-     */
-    _Tp &at(const _Key &key) {
-        iterator it = find(key);
-        if (it == end()) throw index_out_of_bound();
-        return it->second;
-    }
-
-    const _Tp &at(const _Key &key) const {
-        const_iterator it = find(key);
-        if (it == cend()) throw index_out_of_bound();
-        return it->second;
-    }
-
-    /**
-     * insert an element.
-     * return a pair, the first of the pair is
-     *   the iterator to the new element (or the element that prevented the insertion),
-     *   the second one is true if insert successfully, or false.
-     */
-    pair<iterator, bool> insert(const pair<_Key, _Tp> &value) {
-        iterator it = find(value.first);
-        if (it == end()) {
-            auto new_node = new __rbt_node(value);
-            __insert(new_node);
-            return {iterator(this, new_node), true};
-        } else {
-            return {it, false};
-        }
-    }
-
-    /**
-     * access specified element
-     * Returns a reference to the value that is mapped to a key equivalent to key,
-     *   performing an insertion if such key does not already exist.
-     */
-    _Tp &operator[](const _Key &key) {
-        try {
-            return at(key);
-        } catch (index_out_of_bound &) {
-            auto new_node = new __rbt_node(key);
-            __insert(new_node);
-            return new_node->value->second;
-        }
-    }
-
-    /**
-     * behave like at() throw index_out_of_bound if such key does not exist.
-     */
-    const _Tp &operator[](const _Key &key) const {
-        return at(key);
-    }
-
-    /**
-     * checks whether the container is empty
-     * return true if empty, otherwise false.
-     */
-    bool empty() const {
-        return __size == 0;
-    }
-
-    /**
-     * returns the number of elements.
-     */
-    size_t size() const {
-        return __size;
-    }
-
-    /**
-     * clears the contents
-     */
-    void clear() {
-        __size = 0;
-        __list_node *cur = head->next;
-        while (cur != tail) {
-            __list_node *temp = cur;
-            cur = cur->next;
-            delete temp;
-        }
-        head->next = tail;
-        tail->prev = head;
-        root = nullptr;
-    }
-
-    /**
-     * erase the element at pos.
-     *
-     * throw if pos pointed to a bad element (pos == this->end() || pos points an element out of this)
-     */
-    void erase(iterator pos) {
-        if (pos.__map != this) throw invalid_iterator();
-        if (pos.node == nullptr) throw invalid_iterator();
-        if (!pos.node->__has_rbt_node_info) throw invalid_iterator();
-        __erase((__rbt_node *) pos.node);
-    }
-
-    /**
-     * Returns the number of elements with key
-     *   that compares equivalent to the specified argument,
-     *   which is either 1 or 0
-     *     since this container does not allow duplicates.
-     * The default method of check the equivalence is !(a < b || b > a)
-     */
-    size_t count(const _Key &key) const {
-        if (find(key) == cend()) return 0;
-        return 1;
-    }
 };
 
 }
