@@ -573,6 +573,10 @@ class map {
 
         const_iterator(const const_iterator &other) = default;
 
+        // As the author of this file has OCD, this constructor is marked explicit to prevent auto-generated
+        // implicit conversion (which generates a warning by Clang-Tidy).
+        // However, the test data contains such conversion, so an additional function "operator const_iterator()"
+        // is used in replace.
         explicit const_iterator(const iterator &other) : __map(other.__map), node(other.node) {}
 
         const_iterator &operator=(const const_iterator &other) {
