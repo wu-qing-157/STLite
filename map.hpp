@@ -138,6 +138,7 @@ class map {
         __swap(a->child[RIGHT], b->child[RIGHT]);
         __swap(a->color, b->color);
         __swap(a->which, b->which);
+        // fix problems caused by a and b are "nearby"
         if (a->prev == a) a->prev = b;
         if (a->next == a) a->next = b;
         if (a->father == a) a->father = b;
@@ -326,7 +327,7 @@ class map {
     }
 
     /**
-     * @brief   Deconstructor
+     * @brief   Destructor
      */
     ~map() {
         clear();
@@ -495,10 +496,7 @@ class map {
 
         iterator(const iterator &other) = default;
 
-        iterator &operator=(const iterator &other) {
-            __map = other.__map;
-            node = other.node;
-        }
+        iterator &operator=(const iterator &other) = default;
 
         operator const_iterator() {
             return const_iterator(*this);
@@ -572,17 +570,10 @@ class map {
         const_iterator(const map *__map, const rbt_node *node) : __map(__map), node(node) {}
 
         const_iterator(const const_iterator &other) = default;
-
-        // As the author of this file has OCD, this constructor is marked explicit to prevent auto-generated
-        // implicit conversion (which generates a warning by Clang-Tidy).
-        // However, the test data contains such conversion, so an additional function "operator const_iterator()"
-        // is used in replace.
+        
         explicit const_iterator(const iterator &other) : __map(other.__map), node(other.node) {}
 
-        const_iterator &operator=(const const_iterator &other) {
-            __map = other.__map;
-            node = other.node;
-        }
+        const_iterator &operator=(const const_iterator &other) = default;
 
         const const_iterator operator++(int) {
             const_iterator backup(*this);
